@@ -1,0 +1,10 @@
+services:
+  seestern-fighters:
+    image: nginx:alpine
+    container_name: seestern-fighters
+    volumes:
+      # Passe den Pfad links an deinen Unraid-Appdata-Ordner an
+      - /mnt/user/appdata/seestern-fighters:/usr/share/nginx/html:ro
+    ports:
+      - "8090:80"    # Erreichbar unter http://UNRAID-IP:8090
+    restart: unless-stopped
