@@ -1,11 +1,11 @@
 /**
  * gamestate.js
- * Tracks game mode and status; pure data — no Three.js dependency.
+ * Tracks game mode, status, and current level; pure data — no Three.js dependency.
  */
 
 export const GameMode = {
-  VS_AI:         'vs-ai',
-  LOCAL_VERSUS:  'local-versus',
+  VS_AI:        'vs-ai',
+  LOCAL_VERSUS: 'local-versus',
 };
 
 export const GameStatus = {
@@ -17,15 +17,17 @@ export const GameStatus = {
 
 export class GameState {
   constructor() {
-    this.mode   = GameMode.VS_AI;
-    this.status = GameStatus.MENU;
-    this.winner = null;
+    this.mode              = GameMode.VS_AI;
+    this.status            = GameStatus.MENU;
+    this.winner            = null;
+    this.currentLevelIndex = 0;
   }
 
-  start(mode) {
-    this.mode   = mode;
-    this.status = GameStatus.PLAYING;
-    this.winner = null;
+  start(mode, levelIndex = 0) {
+    this.mode              = mode;
+    this.status            = GameStatus.PLAYING;
+    this.winner            = null;
+    this.currentLevelIndex = levelIndex;
   }
 
   pause()  { this.status = GameStatus.PAUSED;    }
@@ -35,6 +37,15 @@ export class GameState {
   endGame(winnerName) {
     this.status = GameStatus.GAME_OVER;
     this.winner = winnerName;
+  }
+
+  nextLevel() {
+    this.currentLevelIndex = (this.currentLevelIndex + 1) % 3;
+    return this.currentLevelIndex;
+  }
+
+  setLevel(index) {
+    this.currentLevelIndex = Math.max(0, Math.min(2, index));
   }
 
   get isPlaying() { return this.status === GameStatus.PLAYING;  }

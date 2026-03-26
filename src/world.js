@@ -2,6 +2,7 @@
  * world.js
  * Three.js scene, renderer, camera, and underwater environment.
  * Camera tracks the midpoint between the two active characters.
+ * Environment colors are configurable from level definitions.
  */
 
 import * as THREE from 'three';
@@ -9,12 +10,15 @@ import * as THREE from 'three';
 export const WORLD_SIZE = 38; // full playable diameter
 export const WORLD_HALF = WORLD_SIZE / 2;
 
+const MAX_PARTICLES = 50;
+
 export class World {
   constructor() {
     this._initRenderer();
     this._initScene();
     this._initCamera();
-    this._buildEnvironment();
+    this._buildBaseEnvironment();
+    this._addWaterParticles();
     window.addEventListener('resize', () => this._onResize());
   }
 
@@ -47,32 +51,36 @@ export class World {
     this._camTarget = new THREE.Vector3();
   }
 
-  // ── Environment ────────────────────────────────────────────────────────────
+  // ── Base environment (persists across levels) ──────────────────────────────
 
-  _buildEnvironment() {
+  _buildBaseEnvironment() {
     this._addLights();
     this._addFloor();
     this._addBoundaryDarkening();
-    this._addDecorations();
   }
 
-  _addLights() {
-    // Ambient — cool blue-green underwater feel
-    const ambient = new THREE.AmbientLight(0x224488, 0.7);
-    this.scene.add(ambient);
+  _addLights(ambientColor = 0x224488, sunColor = 0x6699cc) {
+    // Remove old lights if re-adding
+    if (this._ambientLight) this.scene.remove(this._ambientLight);
+    if (this._sunLight)     this.scene.remove(this._sunLight);
 
-    // Main directional — filtered light from surface
-    const sun = new THREE.DirectionalLight(0x6699cc, 1.1);
-    sun.position.set(8, 22, 10);
-    sun.castShadow = true;
-    sun.shadow.mapSize.setScalar(1024);
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far  = 60;
-    sun.shadow.camera.left = sun.shadow.camera.bottom = -25;
-    sun.shadow.camera.right = sun.shadow.camera.top  =  25;
-    this.scene.add(sun);
+    this._ambientLight = new THREE.AmbientLight(ambientColor, 0.7);
+    this.scene.add(this._ambientLight);
+
+    this._sunLight = new THREE.DirectionalLight(sunColor, 1.1);
+    this._sunLight.position.set(8, 22, 10);
+    this._sunLight.castShadow = true;
+    this._sunLight.shadow.mapSize.setScalar(1024);
+    this._sunLight.shadow.camera.near   = 1;
+    this._sunLight.shadow.camera.far    = 60;
+    this._sunLight.shadow.camera.left   = this._sunLight.shadow.camera.bottom = -25;
+    this._sunLight.shadow.camera.right  = this._sunLight.shadow.camera.top    =  25;
+    this.scene.add(this._sunLight);
 
     // Caustic shimmer — two slowly oscillating point lights
+    if (this._causticLights) {
+      this._causticLights.forEach(l => this.scene.remove(l));
+    }
     this._causticLights = [];
     const causticColors = [0x0099ff, 0x00ddcc];
     causticColors.forEach((col, i) => {
@@ -83,26 +91,29 @@ export class World {
     });
   }
 
-  _addFloor() {
-    // Sandy seabed inside bounds
-    const floorGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 24, 24);
-    const floorMat = new THREE.MeshLambertMaterial({ color: 0xb8994a });
-    const floor    = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    this.scene.add(floor);
+  _addFloor(floorColor = 0xb8994a) {
+    if (this._floor) this.scene.remove(this._floor);
 
-    // Darker outer plane (beyond boundary)
-    const outerGeo = new THREE.PlaneGeometry(WORLD_SIZE * 4, WORLD_SIZE * 4);
-    const outerMat = new THREE.MeshLambertMaterial({ color: 0x001122 });
-    const outer    = new THREE.Mesh(outerGeo, outerMat);
-    outer.rotation.x = -Math.PI / 2;
-    outer.position.y = -0.02;
-    this.scene.add(outer);
+    const floorGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 24, 24);
+    const floorMat = new THREE.MeshLambertMaterial({ color: floorColor });
+    this._floor    = new THREE.Mesh(floorGeo, floorMat);
+    this._floor.rotation.x = -Math.PI / 2;
+    this._floor.receiveShadow = true;
+    this.scene.add(this._floor);
+
+    if (!this._outerFloor) {
+      // Darker outer plane (beyond boundary) — built once
+      const outerGeo = new THREE.PlaneGeometry(WORLD_SIZE * 4, WORLD_SIZE * 4);
+      const outerMat = new THREE.MeshLambertMaterial({ color: 0x001122 });
+      this._outerFloor = new THREE.Mesh(outerGeo, outerMat);
+      this._outerFloor.rotation.x = -Math.PI / 2;
+      this._outerFloor.position.y = -0.02;
+      this.scene.add(this._outerFloor);
+    }
   }
 
   _addBoundaryDarkening() {
-    // Inside-facing dark box — creates a gradient wall effect at the edges
+    if (this._boundaryWall) return; // only build once
     const wallGeo = new THREE.BoxGeometry(WORLD_SIZE, 18, WORLD_SIZE);
     const wallMat = new THREE.MeshBasicMaterial({
       color:       0x001833,
@@ -110,59 +121,127 @@ export class World {
       opacity:     0.28,
       side:        THREE.BackSide,
     });
-    const wall = new THREE.Mesh(wallGeo, wallMat);
-    wall.position.y = 8;
-    this.scene.add(wall);
+    this._boundaryWall = new THREE.Mesh(wallGeo, wallMat);
+    this._boundaryWall.position.y = 8;
+    this.scene.add(this._boundaryWall);
   }
 
-  _addDecorations() {
-    // Rocks / coral clusters as cover
-    const rockData = [
-      { pos: [-5, 0, -6], scale: [1.0, 1.4, 0.9] },
-      { pos: [ 6, 0,  5], scale: [0.8, 1.1, 1.0] },
-      { pos: [-8, 0,  4], scale: [1.2, 0.8, 1.1] },
-      { pos: [ 9, 0, -4], scale: [0.7, 1.5, 0.8] },
-      { pos: [ 0, 0, -9], scale: [1.0, 1.0, 1.3] },
-      { pos: [-3, 0,  9], scale: [0.9, 1.2, 0.9] },
-      { pos: [ 7, 0, -8], scale: [1.1, 0.9, 1.0] },
-      { pos: [-7, 0,  8], scale: [0.8, 1.3, 0.8] },
-    ];
+  // ── Water particles ────────────────────────────────────────────────────────
 
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x334455 });
-    const coralMat = new THREE.MeshLambertMaterial({ color: 0xcc4422 });
+  _addWaterParticles() {
+    this._particles = [];
+    const geo = new THREE.SphereGeometry(0.04, 4, 4);
 
-    rockData.forEach(({ pos, scale }, i) => {
-      const isCoral = i % 3 === 2;
-      const geo  = new THREE.DodecahedronGeometry(0.55, 0);
-      const mesh = new THREE.Mesh(geo, isCoral ? coralMat : rockMat);
-      mesh.position.set(...pos);
-      mesh.scale.set(...scale);
-      mesh.rotation.y = Math.random() * Math.PI;
-      mesh.castShadow    = true;
-      mesh.receiveShadow = true;
-      this.scene.add(mesh);
-    });
-
-    // Kelp strands
-    const kelpPositions = [
-      [-13, 0, -10], [13, 0, 10], [-10, 0, 13], [10, 0, -13],
-      [-15, 0,  0 ], [15, 0,  0], [ 0,  0, 15], [ 0,  0, -15],
-      [-12, 0,  6 ], [12, 0, -6],
-    ];
-
-    kelpPositions.forEach(([x, , z]) => {
-      const h    = 1.6 + Math.random() * 2.2;
-      const kelp = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.06, 0.11, h, 5),
-        new THREE.MeshLambertMaterial({ color: 0x226633 + Math.floor(Math.random() * 0x002200) })
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x44aaff,
+        transparent: true,
+        opacity: 0.3 + Math.random() * 0.3,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        (Math.random() - 0.5) * WORLD_SIZE * 0.9,
+        Math.random() * 8,
+        (Math.random() - 0.5) * WORLD_SIZE * 0.9
       );
-      kelp.position.set(x, h / 2, z);
-      kelp.rotation.z = (Math.random() - 0.5) * 0.3;
-      this.scene.add(kelp);
-    });
+      this.scene.add(mesh);
+      this._particles.push({
+        mesh,
+        speed: 0.3 + Math.random() * 0.7,
+        drift: (Math.random() - 0.5) * 0.2,
+      });
+    }
+  }
 
-    // Scattered pebbles on the floor
-    for (let i = 0; i < 30; i++) {
+  _updateParticles(dt) {
+    for (const p of this._particles) {
+      p.mesh.position.y   += p.speed * dt;
+      p.mesh.position.x   += p.drift * dt;
+      if (p.mesh.position.y > 10) {
+        // Reset to ground
+        p.mesh.position.set(
+          (Math.random() - 0.5) * WORLD_SIZE * 0.9,
+          -0.5,
+          (Math.random() - 0.5) * WORLD_SIZE * 0.9
+        );
+      }
+    }
+  }
+
+  // ── Level loading ──────────────────────────────────────────────────────────
+
+  /**
+   * Apply level-specific colors and build obstacles/decorations.
+   * @param {object} levelDef
+   * @param {ObstacleSystem} obstacleSystem
+   * @param {PickupManager} pickupManager
+   * @param {object} WEAPONS_MAP
+   */
+  loadLevel(levelDef, obstacleSystem, pickupManager, WEAPONS_MAP) {
+    this.unloadLevel(obstacleSystem, pickupManager);
+
+    // Apply level colors
+    this.scene.background.setHex(levelDef.fogColor);
+    this.scene.fog.color.setHex(levelDef.fogColor);
+    this.scene.fog.density = levelDef.fogDensity;
+
+    this._addLights(levelDef.ambientColor, levelDef.sunColor);
+    this._addFloor(levelDef.floorColor);
+
+    // Build obstacles
+    obstacleSystem.buildFromLevel(levelDef, this.scene);
+
+    // Add decorations
+    this._buildDecorations(levelDef.decorations || []);
+
+    // Spawn pickups
+    if (pickupManager && WEAPONS_MAP) {
+      pickupManager.spawnFromLevel(levelDef, WEAPONS_MAP);
+    }
+  }
+
+  unloadLevel(obstacleSystem, pickupManager) {
+    if (obstacleSystem) obstacleSystem.clear(this.scene);
+    if (pickupManager)  pickupManager.clear();
+    this._clearDecorations();
+  }
+
+  _buildDecorations(decorations) {
+    this._decorationMeshes = this._decorationMeshes || [];
+
+    for (const dec of decorations) {
+      let mesh;
+      if (dec.type === 'kelp') {
+        const h = 1.6 + Math.random() * 2.2;
+        mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.11, h, 5),
+          new THREE.MeshLambertMaterial({ color: 0x226633 + Math.floor(Math.random() * 0x002200) })
+        );
+        mesh.position.set(dec.pos[0], h / 2, dec.pos[2]);
+        mesh.rotation.z = (Math.random() - 0.5) * 0.3;
+      } else if (dec.type === 'seagrass') {
+        const h = 0.6 + Math.random() * 0.8;
+        mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.08, h, 4),
+          new THREE.MeshLambertMaterial({ color: 0x44aa44 })
+        );
+        mesh.position.set(dec.pos[0], h / 2, dec.pos[2]);
+        mesh.rotation.z = (Math.random() - 0.5) * 0.5;
+      } else if (dec.type === 'pebble') {
+        mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.1 + Math.random() * 0.1, 5, 4),
+          new THREE.MeshLambertMaterial({ color: 0x556677 })
+        );
+        mesh.position.set(dec.pos[0], 0.04, dec.pos[2]);
+      }
+      if (mesh) {
+        this.scene.add(mesh);
+        this._decorationMeshes.push(mesh);
+      }
+    }
+
+    // Always scatter some pebbles
+    for (let i = 0; i < 20; i++) {
       const pebble = new THREE.Mesh(
         new THREE.SphereGeometry(0.08 + Math.random() * 0.12, 5, 4),
         new THREE.MeshLambertMaterial({ color: 0x556677 })
@@ -173,7 +252,16 @@ export class World {
         (Math.random() - 0.5) * WORLD_SIZE * 0.8
       );
       this.scene.add(pebble);
+      this._decorationMeshes.push(pebble);
     }
+  }
+
+  _clearDecorations() {
+    if (!this._decorationMeshes) return;
+    for (const mesh of this._decorationMeshes) {
+      this.scene.remove(mesh);
+    }
+    this._decorationMeshes = [];
   }
 
   // ── Per-frame ──────────────────────────────────────────────────────────────
@@ -191,8 +279,8 @@ export class World {
       (p1.z + p2.z) / 2
     );
 
-    const dist     = p1.distanceTo(p2);
-    const camDist  = Math.max(14, dist * 1.4 + 4);
+    const dist      = p1.distanceTo(p2);
+    const camDist   = Math.max(14, dist * 1.4 + 4);
     const targetPos = new THREE.Vector3(
       mid.x,
       camDist * 0.88,
@@ -208,6 +296,9 @@ export class World {
     this._causticLights.forEach((light, i) => {
       light.intensity = 0.5 + 0.2 * Math.sin(t * 1.3 + i * 2.1);
     });
+
+    // Update particles
+    this._updateParticles(dt);
   }
 
   render() {

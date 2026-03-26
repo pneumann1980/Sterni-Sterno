@@ -1,11 +1,12 @@
 /**
  * character.js
- * Character class: physics, movement, jump mechanics, health (Farbe), mesh.
+ * Character class: physics, movement, jump mechanics, health, animation, mesh.
  * Both players and AI enemies use this class — no cheating, same rules.
  */
 
 import * as THREE from 'three';
 import { WeaponSlots } from './weapons.js';
+import { CharacterAnimator } from './animation.js';
 
 export const WORLD_HALF = 19;   // half of play-area size
 const GRAVITY            = 22;  // units / s²
@@ -25,12 +26,20 @@ export class Character {
     this.isOnGround = true;
     this.isJumping  = false;
 
+    // Facing direction (radians, used for projectile fire direction)
+    this.facingAngle = 0;
+
     // Combat state
-    this.attackLanded = false;   // did this jump already deal damage?
+    this.attackLanded  = false;   // did this jump already deal damage?
     this.hitFlashTimer = 0;
+    this._wasHit       = false;   // single-frame flag for animator
+
+    // Death animation state
+    this._dying      = false;
+    this._deathTimer = 0;
 
     // Jump timing — 5-second cooldown, same for everyone
-    this.jumpCooldown      = 0;
+    this.jumpCooldown       = 0;
     this.JUMP_COOLDOWN_TIME = 5;
     this.JUMP_FORCE         = 13;
     this.moveSpeed          = 8;
@@ -41,6 +50,9 @@ export class Character {
     // Three.js mesh
     this._buildMesh();
     this.mesh.position.copy(this.position);
+
+    // Animator (created after mesh so arm/body refs are available)
+    this.animator = new CharacterAnimator(this.mesh, this.bodyMesh, this.armMeshes);
   }
 
   // ── Mesh construction ──────────────────────────────────────────────────────
@@ -50,12 +62,16 @@ export class Character {
     this.bodyMat = new THREE.MeshLambertMaterial({ color: this.color });
 
     // Flat body (squashed sphere)
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), this.bodyMat);
-    body.scale.y = 0.42;
-    body.castShadow = true;
-    this.mesh.add(body);
+    this.bodyMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.45, 10, 8),
+      this.bodyMat
+    );
+    this.bodyMesh.scale.y = 0.42;
+    this.bodyMesh.castShadow = true;
+    this.mesh.add(this.bodyMesh);
 
-    // 5 arms arranged radially
+    // 5 arms arranged radially — store references for animator
+    this.armMeshes = [];
     for (let i = 0; i < 5; i++) {
       const angle = (i / 5) * Math.PI * 2;
       const arm = new THREE.Mesh(
@@ -66,6 +82,7 @@ export class Character {
       arm.rotation.y = angle;
       arm.castShadow = true;
       this.mesh.add(arm);
+      this.armMeshes.push(arm);
     }
 
     // Eyes (decorative — own materials, not affected by hit-flash)
@@ -96,7 +113,7 @@ export class Character {
     ctx.textAlign = 'center';
     ctx.fillText(this.name, 128, 40);
 
-    const tex     = new THREE.CanvasTexture(canvas);
+    const tex       = new THREE.CanvasTexture(canvas);
     const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true });
     const sprite    = new THREE.Sprite(spriteMat);
     sprite.scale.set(2, 0.5, 1);
@@ -129,27 +146,55 @@ export class Character {
     }
   }
 
-  /** Called by CombatSystem when a jump-attack lands on this character. */
+  /** Returns a normalised THREE.Vector3 in the character's facing direction. */
+  getForwardDirection() {
+    return new THREE.Vector3(
+      Math.sin(this.facingAngle),
+      0,
+      Math.cos(this.facingAngle)
+    ).normalize();
+  }
+
+  /** Called by CombatSystem when a jump-attack or projectile lands on this character. */
   takeDamage(amount) {
     if (!this.isAlive) return;
     this.health = Math.max(0, this.health - amount);
     this.hitFlashTimer = 0.18;
+    this._wasHit = true;
     if (this.health <= 0) {
       this.isAlive = false;
-      // Tilt to show defeat — removed from scene in GameState
-      this.mesh.rotation.x = Math.PI / 2;
+      this._dying  = true;
     }
   }
 
   // ── Update ─────────────────────────────────────────────────────────────────
 
   update(dt) {
-    if (!this.isAlive) return;
+    // Snapshot wasHit for this frame, then reset
+    const wasHit = this._wasHit;
+    this._wasHit = false;
 
-    // Countdown cooldown
+    if (!this.isAlive) {
+      // Death tilt over 0.5 s
+      if (this._dying) {
+        this._deathTimer += dt;
+        const p = Math.min(1, this._deathTimer / 0.5);
+        this.mesh.rotation.z = p * (Math.PI / 2);
+        if (p >= 1) this._dying = false;
+      }
+      // Update animator for death state
+      this.animator.update(dt, {
+        isMoving: false, isJumping: false, velocityY: 0,
+        isAlive: false, wasHit: false, isOnGround: true, velocityMag: 0,
+      });
+      return;
+    }
+
+    // Cooldowns
     if (this.jumpCooldown > 0) {
       this.jumpCooldown = Math.max(0, this.jumpCooldown - dt);
     }
+    this.weaponSlots.updateCooldowns(dt);
 
     // Gravity
     if (!this.isOnGround) {
@@ -176,9 +221,27 @@ export class Character {
     this.position.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, this.position.x));
     this.position.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, this.position.z));
 
-    // Sync mesh
+    // Update facing angle from velocity
+    const vx = this.velocity.x, vz = this.velocity.z;
+    if (Math.abs(vx) > 0.5 || Math.abs(vz) > 0.5) {
+      this.facingAngle = Math.atan2(vx, vz);
+    }
+
+    // Sync mesh position
     this.mesh.position.copy(this.position);
     this._updateMeshVisuals(dt);
+
+    // Animation state
+    const velocityMag = Math.sqrt(vx * vx + vz * vz);
+    this.animator.update(dt, {
+      isMoving:    velocityMag > 0.5,
+      isJumping:   this.isJumping,
+      velocityY:   this.velocity.y,
+      isAlive:     true,
+      wasHit,
+      isOnGround:  this.isOnGround,
+      velocityMag,
+    });
   }
 
   _updateMeshVisuals(dt) {
@@ -196,9 +259,11 @@ export class Character {
     if (this.isJumping) {
       this.mesh.rotation.z += 4 * dt;
     } else {
-      // Snap back upright
-      this.mesh.rotation.z *= 0.85;
-      this.mesh.rotation.x *= 0.85;
+      // Snap back upright (don't override death tilt)
+      if (!this._dying && this.isAlive) {
+        this.mesh.rotation.z *= 0.85;
+        this.mesh.rotation.x *= 0.85;
+      }
     }
 
     // Hit flash

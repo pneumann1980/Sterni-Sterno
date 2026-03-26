@@ -44,7 +44,7 @@
       border: 1px solid rgba(80, 160, 255, 0.35);
       border-radius: 10px;
       padding: 10px 14px;
-      min-width: 190px;
+      min-width: 200px;
       backdrop-filter: blur(4px);
     }
 
@@ -87,6 +87,13 @@
       transition: width 0.1s linear;
     }
 
+    .weapon-cd-bar {
+      height: 100%;
+      background: #00ccff;
+      border-radius: 5px;
+      transition: width 0.1s linear;
+    }
+
     .bar-value {
       font-size: 12px;
       color: #aaddff;
@@ -97,6 +104,14 @@
       font-size: 11px;
       color: #66aacc;
       margin-top: 1px;
+    }
+
+    .active-weapon {
+      font-size: 12px;
+      font-weight: 700;
+      color: #00ccff;
+      margin: 2px 0;
+      letter-spacing: 0.3px;
     }
 
     .slots {
@@ -110,9 +125,19 @@
       font-size: 10px;
       padding: 2px 6px;
       border-radius: 4px;
+      border: 1px solid transparent;
+      transition: border-color 0.1s;
     }
-    .slot.filled { background: rgba(0,80,180,0.45); border: 1px solid rgba(80,160,255,0.4); }
-    .slot.empty  { background: rgba(40,40,60,0.4);  border: 1px solid rgba(80,80,120,0.3); color: #555; }
+    .slot.filled       { background: rgba(0,80,180,0.45); border-color: rgba(80,160,255,0.4); }
+    .slot.empty        { background: rgba(40,40,60,0.4);  border-color: rgba(80,80,120,0.3); color: #555; }
+    .slot.slot-active  { background: rgba(0,100,220,0.60); border-color: #00ccff !important; color: #fff; }
+
+    .pickup-hint {
+      font-size: 10px;
+      color: #ffdd44;
+      margin-top: 4px;
+      min-height: 14px;
+    }
 
     /* ── Center panel ────────────────────────────────────────────────────── */
     .center-panel {
@@ -130,6 +155,16 @@
       padding: 4px 14px;
       font-size: 12px;
       color: #88ccff;
+      white-space: nowrap;
+    }
+
+    .level-badge {
+      background: rgba(0,50,30,0.75);
+      border: 1px solid rgba(80,200,120,0.4);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 11px;
+      color: #88ffaa;
       white-space: nowrap;
     }
 
@@ -208,8 +243,24 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
 
+    /* ── Level selector ──────────────────────────────────────────────────── */
+    .level-selector {
+      margin-top: 16px;
+    }
+
+    .level-btn {
+      padding: 9px 20px;
+      font-size: 14px;
+    }
+
+    .level-btn-active {
+      background: linear-gradient(135deg, #005500, #00aa44) !important;
+      box-shadow: 0 4px 15px rgba(0,180,80,0.4) !important;
+      border: 1px solid rgba(0,220,100,0.5);
+    }
+
     .controls-hint {
-      margin-top: 28px;
+      margin-top: 12px;
       padding: 12px 22px;
       background: rgba(0,20,60,0.6);
       border: 1px solid rgba(80,160,255,0.2);
@@ -218,7 +269,7 @@
       color: #557799;
       line-height: 1.8;
       text-align: center;
-      max-width: 520px;
+      max-width: 560px;
     }
 
     /* ── Debug ──────────────────────────────────────────────────────────── */
@@ -256,16 +307,18 @@
   <!-- ── Main Menu ──────────────────────────────────────────────────────── -->
   <div id="menu" class="overlay">
     <h1>🌊 Seestern Fighters</h1>
-    <div class="subtitle">PROTOTYPE v0.1</div>
+    <div class="subtitle">v0.2 — Arena Edition</div>
     <p>Wähle deinen Spielmodus:</p>
     <div class="btn-row">
       <button class="btn" id="btn-vs-ai">🤖 Spieler vs KI</button>
       <button class="btn" id="btn-vs-player">⚔ Lokaler 2-Spieler</button>
     </div>
+    <!-- Level selector inserted here by main.js -->
     <div class="controls-hint">
-      <strong>Spieler 1:</strong> Pfeiltasten = Bewegen &nbsp;|&nbsp; Leertaste = Springen/Angriff<br>
-      <strong>Spieler 2:</strong> WASD = Bewegen &nbsp;|&nbsp; F = Springen/Angriff<br>
-      <strong>ESC</strong> = Pause &nbsp;|&nbsp; <strong>TAB</strong> = Debug-Info
+      <strong>Spieler 1:</strong> Pfeiltasten = Bewegen &nbsp;|&nbsp; Leertaste = Springen &nbsp;|&nbsp; Enter = Angriff &nbsp;|&nbsp; X = Waffe wechseln<br>
+      <strong>Spieler 2:</strong> WASD = Bewegen &nbsp;|&nbsp; F = Springen &nbsp;|&nbsp; G = Angriff &nbsp;|&nbsp; H = Waffe wechseln<br>
+      <strong>ESC</strong> = Pause &nbsp;|&nbsp; <strong>TAB</strong> = Debug-Info<br>
+      <em style="color:#446644">Sprung-Angriff = auf Gegner fallen lassen (verliert Waffen!)</em>
     </div>
   </div>
 

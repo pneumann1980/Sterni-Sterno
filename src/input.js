@@ -6,26 +6,30 @@
  */
 
 export const PLAYER1_KEYS = {
-  up:       'ArrowUp',
-  down:     'ArrowDown',
-  left:     'ArrowLeft',
-  right:    'ArrowRight',
-  jump:     ' ',        // Space
-  interact: 'e',
-  emote:    'q',
+  up:          'ArrowUp',
+  down:        'ArrowDown',
+  left:        'ArrowLeft',
+  right:       'ArrowRight',
+  jump:        ' ',       // Space
+  attack:      'Enter',  // Active weapon attack
+  switchWeapon:'x',      // Switch active slot
+  interact:    'e',
+  emote:       'q',
 };
 
 export const PLAYER2_KEYS = {
-  up:       'w',
-  down:     's',
-  left:     'a',
-  right:    'd',
-  jump:     'f',
-  interact: 'r',
-  emote:    't',
+  up:          'w',
+  down:        's',
+  left:        'a',
+  right:       'd',
+  jump:        'f',
+  attack:      'g',
+  switchWeapon:'h',
+  interact:    'r',
+  emote:       't',
 };
 
-const PREVENT_DEFAULT_KEYS = new Set([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+const PREVENT_DEFAULT_KEYS = new Set([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter']);
 
 export class InputManager {
   constructor() {
@@ -37,7 +41,7 @@ export class InputManager {
   }
 
   _normalize(key) {
-    // Keep multi-char keys (ArrowUp, Escape, …) as-is; lowercase single chars
+    // Keep multi-char keys (ArrowUp, Escape, Enter, …) as-is; lowercase single chars
     return key.length === 1 ? key.toLowerCase() : key;
   }
 
@@ -73,5 +77,15 @@ export class InputManager {
       left:  this.isDown(keyMap.left),
       right: this.isDown(keyMap.right),
     };
+  }
+
+  /** Returns true if the attack key was just pressed for the given keyMap */
+  wasAttackPressed(keyMap) {
+    return this.wasJustPressed(keyMap.attack);
+  }
+
+  /** Returns true if the weapon-switch key was just pressed for the given keyMap */
+  wasSwitchPressed(keyMap) {
+    return this.wasJustPressed(keyMap.switchWeapon);
   }
 }
