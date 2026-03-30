@@ -2,7 +2,13 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Seestern Fighters" />
+  <meta name="theme-color" content="#003366" />
+  <link rel="manifest" href="manifest.json" />
   <title>Seestern Fighters</title>
 
   <!-- Three.js via importmap — no build tool needed -->
@@ -23,6 +29,10 @@
       font-family: 'Segoe UI', Arial, sans-serif;
       color: #fff;
       user-select: none;
+      /* Prevent pull-to-refresh and scroll on mobile */
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
     }
     canvas { display: block; }
 
@@ -297,6 +307,136 @@
       margin-bottom: 22px;
       letter-spacing: 1px;
     }
+
+    /* ── Touch Controls ─────────────────────────────────────────────────── */
+    #touch-controls {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      pointer-events: none; /* children opt-in */
+    }
+
+    /* Left half touch zone (joystick input area) */
+    #tc-left-zone {
+      position: absolute;
+      left: 0; top: 0;
+      width: 50%; height: 100%;
+      pointer-events: all;
+    }
+
+    /* Joystick base — repositioned on touchstart */
+    #tc-joy-base {
+      position: absolute;
+      width: 110px; height: 110px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(100,200,255,0.35);
+      backdrop-filter: blur(2px);
+      pointer-events: none;
+      transition: opacity 0.15s;
+    }
+    #tc-joy-knob {
+      position: absolute;
+      width: 50px; height: 50px;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(150,220,255,0.8), rgba(0,100,200,0.55));
+      border: 2px solid rgba(100,200,255,0.7);
+      box-shadow: 0 0 12px rgba(0,150,255,0.4);
+      pointer-events: none;
+      transition: transform 0.03s;
+    }
+
+    /* Right action zone */
+    #tc-right-zone {
+      position: absolute;
+      right: 20px;
+      bottom: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      pointer-events: none;
+    }
+    #tc-btn-row-top {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    /* Base button style */
+    .tc-btn {
+      pointer-events: all;
+      border-radius: 50%;
+      border: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      cursor: pointer;
+      font-weight: 700;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      backdrop-filter: blur(4px);
+      transition: transform 0.08s, opacity 0.08s;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .tc-btn span {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+    .tc-btn-pressed {
+      transform: scale(0.88) !important;
+      opacity: 0.75;
+    }
+
+    /* Jump — big, primary */
+    #tc-btn-jump {
+      width: 80px; height: 80px;
+      font-size: 26px;
+      background: rgba(0,120,255,0.65);
+      border: 2px solid rgba(100,200,255,0.7);
+      color: #fff;
+    }
+    /* Attack — medium */
+    #tc-btn-attack {
+      width: 62px; height: 62px;
+      font-size: 20px;
+      background: rgba(255,80,0,0.65);
+      border: 2px solid rgba(255,160,80,0.7);
+      color: #fff;
+    }
+    /* Weapon switch — small */
+    #tc-btn-switch {
+      width: 48px; height: 48px;
+      font-size: 16px;
+      background: rgba(0,180,100,0.60);
+      border: 2px solid rgba(100,255,150,0.65);
+      color: #fff;
+    }
+
+    /* ── Safe area padding for phones with notches ───────────────────────── */
+    @supports (padding: max(0px)) {
+      #tc-right-zone { right: max(20px, env(safe-area-inset-right)); }
+      #tc-left-zone  { padding-left: max(0px, env(safe-area-inset-left)); }
+      .p-hud { padding-top: max(10px, env(safe-area-inset-top)); }
+    }
+
+    /* ── Landscape phone: shrink HUD ─────────────────────────────────────── */
+    @media (max-height: 500px) {
+      .p-hud   { padding: 6px 10px; min-width: 150px; font-size: 90%; }
+      .p-name  { font-size: 12px; }
+      .bar-bg  { height: 8px; }
+      .slots   { display: none; }
+      #tc-btn-jump   { width: 68px; height: 68px; font-size: 22px; }
+      #tc-btn-attack { width: 54px; height: 54px; font-size: 17px; }
+      #tc-btn-switch { width: 42px; height: 42px; font-size: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -342,6 +482,15 @@
 
   <!-- Debug overlay -->
   <div id="debug"></div>
+
+  <!-- PWA Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {/* offline fallback not critical */});
+      });
+    }
+  </script>
 
   <script type="module" src="src/main.js"></script>
 </body>

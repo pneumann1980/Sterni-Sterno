@@ -29,6 +29,7 @@ import { ProjectileManager }  from './projectile.js';
 import { PickupManager }      from './pickup.js';
 import { ObstacleSystem }     from './obstacles.js';
 import { LEVELS }             from './level.js';
+import { TouchInput }         from './touch.js';
 
 // Projectile configuration per weapon type
 const PROJECTILE_CONFIG = {
@@ -51,6 +52,7 @@ class Game {
   constructor() {
     this.world      = new World();
     this.input      = new InputManager();
+    this.touch      = new TouchInput();
     this.combat     = new CombatSystem();
     this.state      = new GameState();
     this.hud        = new HUD(document.getElementById('hud'));
@@ -328,19 +330,22 @@ class Game {
   _processInput() {
     if (!this.player1 || !this.player1.isAlive) return;
 
-    // Player 1
-    const m1 = this.input.getMovement(PLAYER1_KEYS);
+    // ── Player 1: keyboard + touch merged ───────────────────────────────────
+    const m1  = this.input.getMovement(PLAYER1_KEYS);
+    const tdx = this.touch.getMoveX();
+    const tdz = this.touch.getMoveZ();
+
     this.player1.move(
-      (m1.right ? 1 : 0) - (m1.left ? 1 : 0),
-      (m1.down  ? 1 : 0) - (m1.up   ? 1 : 0)
+      (m1.right ? 1 : 0) - (m1.left ? 1 : 0) + tdx,
+      (m1.down  ? 1 : 0) - (m1.up   ? 1 : 0) + tdz
     );
-    if (this.input.wasJustPressed(PLAYER1_KEYS.jump)) {
+    if (this.input.wasJustPressed(PLAYER1_KEYS.jump) || this.touch.wasJumpPressed()) {
       this.player1.jump();
     }
-    if (this.input.wasAttackPressed(PLAYER1_KEYS)) {
+    if (this.input.wasAttackPressed(PLAYER1_KEYS) || this.touch.wasAttackPressed()) {
       this._fireActiveWeapon(this.player1);
     }
-    if (this.input.wasSwitchPressed(PLAYER1_KEYS)) {
+    if (this.input.wasSwitchPressed(PLAYER1_KEYS) || this.touch.wasSwitchPressed()) {
       this.player1.weaponSlots.nextSlot();
     }
 

@@ -10,7 +10,11 @@ import * as THREE from 'three';
 export const WORLD_SIZE = 38; // full playable diameter
 export const WORLD_HALF = WORLD_SIZE / 2;
 
-const MAX_PARTICLES = 50;
+// Detect mobile for performance tuning
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && window.innerWidth < 1024);
+
+const MAX_PARTICLES = IS_MOBILE ? 20 : 50;
 
 export class World {
   constructor() {
@@ -25,8 +29,11 @@ export class World {
   // ── Init ───────────────────────────────────────────────────────────────────
 
   _initRenderer() {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({ antialias: !IS_MOBILE });
+    // On mobile: cap pixel ratio at 1.5 to save fill-rate
+    this.renderer.setPixelRatio(IS_MOBILE
+      ? Math.min(window.devicePixelRatio, 1.5)
+      : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -70,7 +77,7 @@ export class World {
     this._sunLight = new THREE.DirectionalLight(sunColor, 1.1);
     this._sunLight.position.set(8, 22, 10);
     this._sunLight.castShadow = true;
-    this._sunLight.shadow.mapSize.setScalar(1024);
+    this._sunLight.shadow.mapSize.setScalar(IS_MOBILE ? 512 : 1024);
     this._sunLight.shadow.camera.near   = 1;
     this._sunLight.shadow.camera.far    = 60;
     this._sunLight.shadow.camera.left   = this._sunLight.shadow.camera.bottom = -25;
