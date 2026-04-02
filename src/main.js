@@ -178,6 +178,7 @@ class Game {
 
     this._showScreen('none');
     document.getElementById('hud').style.display = 'flex';
+    this.touch.show();
   }
 
   _equipDefault(char) {
@@ -212,16 +213,19 @@ class Game {
     this.world.unloadLevel(this.obstacles, this.pickups);
     this.state.toMenu();
     document.getElementById('hud').style.display = 'none';
+    this.touch.hide();
     this._showScreen('menu');
   }
 
   _pause() {
     this.state.pause();
+    this.touch.hide();
     this._showScreen('pause');
   }
 
   _resume() {
     this.state.resume();
+    this.touch.show();
     this._showScreen('none');
   }
 
