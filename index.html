@@ -405,13 +405,48 @@
       opacity: 0.75;
     }
 
-    /* Jump — big, primary */
+    /* Jump — big, primary (old button, kept for fallback) */
     #tc-btn-jump {
       width: 80px; height: 80px;
       font-size: 26px;
       background: rgba(0,120,255,0.65);
       border: 2px solid rgba(100,200,255,0.7);
       color: #fff;
+    }
+
+    /* Jump zone (new tap-area replacing the button) */
+    #tc-jump-zone {
+      pointer-events: all;
+      width: 100px;
+      height: 100px;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.08s, opacity 0.08s;
+    }
+    #tc-jump-base {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: rgba(0,120,255,0.60);
+      border: 2px solid rgba(100,200,255,0.75);
+      backdrop-filter: blur(4px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3), 0 0 18px rgba(0,120,255,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #tc-jump-label {
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+      letter-spacing: 1px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+    .tc-jump-pressed {
+      transform: scale(0.88);
+      opacity: 0.72;
     }
     /* Attack — medium */
     #tc-btn-attack {
@@ -444,6 +479,8 @@
       .bar-bg  { height: 8px; }
       .slots   { display: none; }
       #tc-btn-jump   { width: 68px; height: 68px; font-size: 22px; }
+      #tc-jump-zone  { width: 80px; height: 80px; }
+      #tc-jump-label { font-size: 12px; }
       #tc-btn-attack { width: 54px; height: 54px; font-size: 17px; }
       #tc-btn-switch { width: 42px; height: 42px; font-size: 14px; }
     }
