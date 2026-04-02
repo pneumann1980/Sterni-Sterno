@@ -58,44 +58,51 @@ export class Character {
   // ── Mesh construction ──────────────────────────────────────────────────────
 
   _buildMesh() {
-    this.mesh    = new THREE.Group();
+    this.mesh = new THREE.Group();
     this.bodyMat = new THREE.MeshLambertMaterial({ color: this.color });
 
-    // Flat body (squashed sphere)
-    this.bodyMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.45, 10, 8),
-      this.bodyMat
-    );
-    this.bodyMesh.scale.y = 0.42;
-    this.bodyMesh.castShadow = true;
-    this.mesh.add(this.bodyMesh);
+    // Central body — larger flattened sphere
+    const bodyGeo = new THREE.SphereGeometry(0.52, 10, 8);
+    const bodyMesh = new THREE.Mesh(bodyGeo, this.bodyMat);
+    bodyMesh.scale.y = 0.38;
+    bodyMesh.castShadow = true;
+    this.mesh.add(bodyMesh);
+    this.bodyMesh = bodyMesh;
 
-    // 5 arms arranged radially — store references for animator
+    // 5 arms — each arm is 3 spheres tapering outward
     this.armMeshes = [];
     for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2;
-      const arm = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.18, 0.22),
-        this.bodyMat
-      );
-      arm.position.set(Math.cos(angle) * 0.56, 0, Math.sin(angle) * 0.56);
-      arm.rotation.y = angle;
-      arm.castShadow = true;
-      this.mesh.add(arm);
-      this.armMeshes.push(arm);
+      const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      const armGroup = new THREE.Group();
+      armGroup.rotation.y = angle; // point arm outward
+
+      const sizes   = [0.22, 0.16, 0.10]; // taper from body to tip
+      const offsets = [0.55, 0.95, 1.28]; // distance from center
+
+      sizes.forEach((r, j) => {
+        const seg = new THREE.Mesh(
+          new THREE.SphereGeometry(r, 7, 6),
+          this.bodyMat
+        );
+        seg.scale.y = 0.45;
+        seg.position.set(offsets[j], 0, 0); // along local X axis
+        seg.castShadow = true;
+        armGroup.add(seg);
+      });
+
+      this.mesh.add(armGroup);
+      this.armMeshes.push(armGroup);
     }
 
     // Eyes (decorative — own materials, not affected by hit-flash)
     const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-
-    for (const xOff of [-0.14, 0.14]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), eyeMat);
-      eye.position.set(xOff, 0.11, 0.43);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111133 });
+    for (const xOff of [-0.16, 0.16]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 7, 6), eyeMat);
+      eye.position.set(xOff, 0.14, 0.47);
       this.mesh.add(eye);
-
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), pupilMat);
-      pupil.position.set(xOff, 0.11, 0.49);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.045, 5, 4), pupilMat);
+      pupil.position.set(xOff, 0.14, 0.52);
       this.mesh.add(pupil);
     }
 
@@ -265,6 +272,26 @@ export class Character {
         this.mesh.rotation.x *= 0.85;
       }
     }
+
+    // Idle bob — gentle up/down
+    this.mesh.position.y = this.position.y + Math.sin(Date.now() * 0.002) * 0.04;
+
+    // Walk animation — arms pulse when moving
+    if (this.armMeshes && (Math.abs(this.velocity.x) > 0.5 || Math.abs(this.velocity.z) > 0.5)) {
+      const t = Date.now() * 0.008;
+      this.armMeshes.forEach((arm, i) => {
+        arm.scale.set(1, 1, 1 + 0.12 * Math.sin(t + i * 1.26));
+      });
+    } else if (this.armMeshes) {
+      // Gentle idle wiggle
+      const t = Date.now() * 0.002;
+      this.armMeshes.forEach((arm, i) => {
+        arm.scale.set(1, 1, 1 + 0.05 * Math.sin(t + i * 1.26));
+      });
+    }
+
+    // Jump animation — stretch body vertically while airborne
+    if (this.bodyMesh) this.bodyMesh.scale.y = this.isJumping ? 0.6 : 0.38;
 
     // Hit flash
     if (this.hitFlashTimer > 0) {

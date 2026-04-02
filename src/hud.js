@@ -38,6 +38,7 @@ export class HUD {
       </div>
 
       <div class="center-panel">
+        <div class="score-display" id="score-display">Score: 0</div>
         <div class="mode-badge" id="mode-badge">KI-Gegner</div>
         <div class="level-badge" id="level-badge"></div>
         <div class="hit-flash" id="hit-flash"></div>
@@ -178,6 +179,12 @@ export class HUD {
     el.classList.add('visible');
     clearTimeout(this._hitTimeout);
     this._hitTimeout = setTimeout(() => el.classList.remove('visible'), 1200);
+  }
+
+  /** Update the persistent score display */
+  updateScore(score) {
+    const el = document.getElementById('score-display');
+    if (el) el.textContent = `Score: ${score}`;
   }
 
   /** Update the level badge text */

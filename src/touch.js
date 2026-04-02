@@ -4,13 +4,14 @@
  *
  * Layout:
  *   Left half  → dynamic movement joystick (appears at touch-start position)
- *   Right zone → fixed buttons: JUMP (large), ATTACK, SWITCH WEAPON
+ *   Right zone → attack + switch buttons (small, top), large JUMP zone below
  *
  * Output interface (mirrors InputManager where possible):
  *   getMoveX() / getMoveZ()  — analog -1..1
  *   wasJumpPressed()         — once per press
  *   wasAttackPressed()       — once per press
  *   wasSwitchPressed()       — once per press
+ *   show() / hide()          — visibility lifecycle
  *   clearFrameState()        — call once per frame after reading
  */
 
@@ -37,10 +38,7 @@ export class TouchInput {
     this._buildDOM();
     this._bindEvents();
 
-    // Auto-show on touch devices
-    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-      this.show();
-    }
+    // Always start hidden — show() is called by main.js when game starts
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -68,18 +66,22 @@ export class TouchInput {
       <!-- Left half: touch zone (joystick appears dynamically) -->
       <div id="tc-left-zone"></div>
 
-      <!-- Joystick (repositioned on touch-start) -->
+      <!-- Joystick (repositioned on touchstart) -->
       <div id="tc-joy-base">
         <div id="tc-joy-knob"></div>
       </div>
 
-      <!-- Right action buttons -->
+      <!-- Right action zone -->
       <div id="tc-right-zone">
         <div id="tc-btn-row-top">
           <button id="tc-btn-switch" class="tc-btn tc-btn-sm">↕<span>Waffe</span></button>
           <button id="tc-btn-attack" class="tc-btn tc-btn-md">⚔<span>Angriff</span></button>
         </div>
-        <button id="tc-btn-jump" class="tc-btn tc-btn-lg">↑<span>Sprung</span></button>
+        <div id="tc-jump-zone">
+          <div id="tc-jump-base">
+            <div id="tc-jump-label">SPRUNG</div>
+          </div>
+        </div>
       </div>
     `;
     document.body.appendChild(this._container);
@@ -143,8 +145,24 @@ export class TouchInput {
     leftZone.addEventListener('touchend',    endLeft, { passive: true });
     leftZone.addEventListener('touchcancel', endLeft, { passive: true });
 
+    // ── Jump zone: tap anywhere in the zone ──────────────────────────────────
+    const jumpZone = document.getElementById('tc-jump-zone');
+    if (jumpZone) {
+      jumpZone.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this._jumpPressed = true;
+        jumpZone.classList.add('tc-jump-pressed');
+      }, { passive: false });
+      jumpZone.addEventListener('touchend', () => {
+        jumpZone.classList.remove('tc-jump-pressed');
+      }, { passive: true });
+      jumpZone.addEventListener('touchcancel', () => {
+        jumpZone.classList.remove('tc-jump-pressed');
+      }, { passive: true });
+    }
+
     // ── Action buttons ───────────────────────────────────────────────────────
-    this._bindActionBtn('tc-btn-jump',   () => { this._jumpPressed   = true; });
     this._bindActionBtn('tc-btn-attack', () => { this._attackPressed = true; });
     this._bindActionBtn('tc-btn-switch', () => { this._switchPressed = true; });
   }

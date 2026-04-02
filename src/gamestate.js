@@ -21,7 +21,11 @@ export class GameState {
     this.status            = GameStatus.MENU;
     this.winner            = null;
     this.currentLevelIndex = 0;
+    this.score             = 0;
   }
+
+  addWin()  { this.score += 10; }
+  addLoss() { this.score = Math.max(0, this.score - 5); }
 
   start(mode, levelIndex = 0) {
     this.mode              = mode;
