@@ -231,8 +231,19 @@ class Game {
 
   _endGame(winnerName) {
     this.state.endGame(winnerName);
-    document.getElementById('winner-text').textContent = `${winnerName} gewinnt! 🌟`;
     document.getElementById('hud').style.display = 'none';
+    this.touch.hide();
+
+    const isWin = winnerName === this.player1.name;
+    if (isWin) this.state.addWin(); else this.state.addLoss();
+    document.getElementById('winner-text').textContent = isWin ? 'VICTORY! 🏆' : 'DEFEAT 💀';
+    document.getElementById('winner-text').style.color = isWin ? '#ffdd00' : '#ff4444';
+    const deltaEl = document.getElementById('score-delta');
+    if (deltaEl) {
+      deltaEl.textContent = isWin ? '+10 Punkte' : '-5 Punkte';
+      deltaEl.style.color = isWin ? '#88ff88' : '#ff6666';
+    }
+    this.hud.updateScore(this.state.score);
 
     // Show / update next-level button
     let nextBtn = document.getElementById('btn-next-level');
@@ -486,6 +497,7 @@ class Game {
     if (this.player1 && this.player2) {
       this.hud.update(this.player1, this.player2);
     }
+    this.hud.updateScore(this.state.score);
 
     // Debug
     this._updateDebug();

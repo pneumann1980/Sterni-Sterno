@@ -149,6 +149,16 @@
       min-height: 14px;
     }
 
+    /* ── Score display ───────────────────────────────────────────────────── */
+    .score-display {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffdd00;
+      text-shadow: 0 0 12px rgba(255,200,0,0.6);
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
     /* ── Center panel ────────────────────────────────────────────────────── */
     .center-panel {
       display: flex;
@@ -447,7 +457,7 @@
   <!-- ── Main Menu ──────────────────────────────────────────────────────── -->
   <div id="menu" class="overlay">
     <h1>🌊 Seestern Fighters</h1>
-    <div class="subtitle">v0.2 — Arena Edition</div>
+    <div class="subtitle">v0.3 — Arena Edition</div>
     <p>Wähle deinen Spielmodus:</p>
     <div class="btn-row">
       <button class="btn" id="btn-vs-ai">🤖 Spieler vs KI</button>
@@ -465,6 +475,7 @@
   <!-- ── Game Over ──────────────────────────────────────────────────────── -->
   <div id="game-over" class="overlay">
     <h2 id="winner-text">Spieler 1 gewinnt!</h2>
+    <div id="score-delta" style="font-size:20px;font-weight:700;margin-bottom:16px;"></div>
     <div class="btn-row">
       <button class="btn" id="btn-restart">🔄 Nochmal</button>
       <button class="btn secondary" id="btn-menu">🏠 Zum Menü</button>
