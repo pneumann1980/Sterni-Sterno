@@ -23,10 +23,12 @@ export class GameState {
     this.winner            = null;
     this.currentLevelIndex = 0;
     this.score             = 0;
+    this.difficulty        = 'medium'; // 'easy' | 'medium' | 'hard'
   }
 
   addWin()  { this.score += 10; }
   addLoss() { this.score = Math.max(0, this.score - 5); }
+  setDifficulty(d) { this.difficulty = d; }
 
   start(mode, levelIndex = 0) {
     this.mode              = mode;

@@ -111,6 +111,15 @@ class Game {
       this._startGame(GameMode.LOCAL_VERSUS, this._selectedLevel);
     document.getElementById('btn-vs-two-ai').onclick = () =>
       this._startGame(GameMode.VS_TWO_AI, this._selectedLevel);
+
+    // Difficulty selector
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('diff-active'));
+        btn.classList.add('diff-active');
+        this.state.setDifficulty(btn.dataset.diff);
+      });
+    });
   }
 
   _bindGameButtons() {
@@ -183,12 +192,13 @@ class Game {
       this.world.scene.add(this.player3.mesh);
     }
 
-    // AI wiring
+    // AI wiring — pass selected difficulty
+    const diff = this.state.difficulty;
     this.ai = (mode === GameMode.VS_AI || mode === GameMode.VS_TWO_AI)
-      ? new AIController(this.player2, this.player1)
+      ? new AIController(this.player2, this.player1, diff)
       : null;
     this.ai2 = mode === GameMode.VS_TWO_AI && this.player3
-      ? new AIController(this.player3, this.player1)
+      ? new AIController(this.player3, this.player1, diff)
       : null;
 
     // Load level (builds obstacles, decorations, pickups)

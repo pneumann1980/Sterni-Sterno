@@ -66,33 +66,47 @@ export class Character {
 
   _buildMesh() {
     this.mesh = new THREE.Group();
-    this.bodyMat = new THREE.MeshLambertMaterial({ color: this.color });
 
-    // Central body — larger flattened sphere
-    const bodyGeo = new THREE.SphereGeometry(0.52, 10, 8);
+    // Body material with subtle emissive so character pops visually
+    this.bodyMat = new THREE.MeshLambertMaterial({
+      color:            this.color,
+      emissive:         this.color,
+      emissiveIntensity: 0.18,
+    });
+    // Slightly darker tip material for arm ends — adds visual depth
+    const tipColor = new THREE.Color(this.color).multiplyScalar(0.65);
+    this.tipMat = new THREE.MeshLambertMaterial({
+      color:            tipColor,
+      emissive:         tipColor,
+      emissiveIntensity: 0.12,
+    });
+
+    // Central body — bigger, flatter pancake shape
+    const bodyGeo  = new THREE.SphereGeometry(0.60, 12, 8);
     const bodyMesh = new THREE.Mesh(bodyGeo, this.bodyMat);
-    bodyMesh.scale.y = 0.38;
+    bodyMesh.scale.y = 0.36;
     bodyMesh.castShadow = true;
     this.mesh.add(bodyMesh);
     this.bodyMesh = bodyMesh;
 
-    // 5 arms — each arm is 3 spheres tapering outward
+    // 5 arms — 3 sphere segments tapering; slightly irregular lengths
     this.armMeshes = [];
+    const ARM_LENGTHS = [1.0, 1.08, 0.96, 1.04, 0.98]; // slight irregularity
     for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      const angle    = (i / 5) * Math.PI * 2 - Math.PI / 2;
       const armGroup = new THREE.Group();
-      armGroup.rotation.y = angle; // point arm outward
+      armGroup.rotation.y = angle;
+      const L = ARM_LENGTHS[i];
 
-      const sizes   = [0.22, 0.16, 0.10]; // taper from body to tip
-      const offsets = [0.55, 0.95, 1.28]; // distance from center
+      const sizes   = [0.27, 0.19, 0.11];
+      const offsets = [0.60 * L, 1.05 * L, 1.42 * L];
+      const mats    = [this.bodyMat, this.bodyMat, this.tipMat];
 
       sizes.forEach((r, j) => {
-        const seg = new THREE.Mesh(
-          new THREE.SphereGeometry(r, 7, 6),
-          this.bodyMat
-        );
-        seg.scale.y = 0.45;
-        seg.position.set(offsets[j], 0, 0); // along local X axis
+        const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), mats[j]);
+        seg.scale.y = 0.42;
+        // Slight downward droop toward tip for organic feel
+        seg.position.set(offsets[j], -j * 0.04, 0);
         seg.castShadow = true;
         armGroup.add(seg);
       });
@@ -101,21 +115,21 @@ export class Character {
       this.armMeshes.push(armGroup);
     }
 
-    // Eyes (decorative — own materials, not affected by hit-flash)
+    // Eyes — bigger, more expressive
     const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111133 });
-    for (const xOff of [-0.16, 0.16]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 7, 6), eyeMat);
-      eye.position.set(xOff, 0.14, 0.47);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a22 });
+    for (const xOff of [-0.18, 0.18]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.10, 8, 6), eyeMat);
+      eye.position.set(xOff, 0.15, 0.52);
       this.mesh.add(eye);
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.045, 5, 4), pupilMat);
-      pupil.position.set(xOff, 0.14, 0.52);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.055, 5, 4), pupilMat);
+      pupil.position.set(xOff + 0.02, 0.15, 0.58);
       this.mesh.add(pupil);
     }
 
-    // Weapon mount — right-hand side
+    // Weapon mount — raised and offset so it's clearly visible
     this._weaponMount = new THREE.Group();
-    this._weaponMount.position.set(0.7, 0.1, 0);
+    this._weaponMount.position.set(1.1, 0.4, 0);
     this.mesh.add(this._weaponMount);
     this._currentWeaponModel = null;
 
@@ -161,7 +175,7 @@ export class Character {
     } else {
       model = buildCoralGunMesh();
     }
-    model.scale.setScalar(0.75);
+    model.scale.setScalar(1.8);   // large enough to read at a glance
     this._weaponMount.add(model);
     this._currentWeaponModel = model;
   }
@@ -317,15 +331,19 @@ export class Character {
 
     // Walk animation — arms pulse when moving
     if (this.armMeshes && (Math.abs(this.velocity.x) > 0.5 || Math.abs(this.velocity.z) > 0.5)) {
-      const t = Date.now() * 0.008;
+      // Walk: arms ripple outward/inward with offset phase — like real starfish
+      const t = Date.now() * 0.009;
       this.armMeshes.forEach((arm, i) => {
-        arm.scale.set(1, 1, 1 + 0.12 * Math.sin(t + i * 1.26));
+        const wave = Math.sin(t + i * 1.26);
+        arm.scale.set(1, 1, 1 + 0.22 * wave);        // stretch along arm
+        arm.rotation.z = 0.10 * Math.sin(t + i * 1.26 + 0.5); // slight up/down flap
       });
     } else if (this.armMeshes) {
-      // Gentle idle wiggle
-      const t = Date.now() * 0.002;
+      // Idle: slow gentle breathing wiggle
+      const t = Date.now() * 0.0025;
       this.armMeshes.forEach((arm, i) => {
-        arm.scale.set(1, 1, 1 + 0.05 * Math.sin(t + i * 1.26));
+        arm.scale.set(1, 1, 1 + 0.07 * Math.sin(t + i * 1.26));
+        arm.rotation.z = 0.04 * Math.sin(t + i * 1.26);
       });
     }
 

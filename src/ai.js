@@ -11,26 +11,35 @@
  *   • Evades for a short period after taking damage
  */
 
+// Difficulty presets — applied in constructor
+const DIFFICULTY_PRESETS = {
+  easy:   { speed: 0.42, fireInterval: 0.90, jumpProb: 0.30, evadeProb: 0.15, attackRange: 2.0 },
+  medium: { speed: 0.80, fireInterval: 0.45, jumpProb: 0.65, evadeProb: 0.55, attackRange: 2.4 },
+  hard:   { speed: 1.12, fireInterval: 0.25, jumpProb: 0.88, evadeProb: 0.80, attackRange: 2.8 },
+};
+
 export class AIController {
-  constructor(character, target) {
+  constructor(character, target, difficulty = 'medium') {
     this.character = character;
     this.target    = target;
     this.state     = 'chase';
     this.stateTimer = 0;
 
-    // Tuning
-    this.SPEED_FACTOR       = 0.80;
-    this.ATTACK_RANGE       = 2.4;
+    // Apply difficulty preset
+    const p = DIFFICULTY_PRESETS[difficulty] || DIFFICULTY_PRESETS.medium;
+    this.SPEED_FACTOR       = p.speed;
+    this.ATTACK_RANGE       = p.attackRange;
     this.FIRE_RANGE         = 10.0;
-    this.EVADE_DURATION     = 1.2;  // seconds to evade after being hit
+    this.EVADE_DURATION     = 1.2;
     this.STRAFE_SPEED_BONUS = 1.15;
+    this._evadeProb         = p.evadeProb;
     this.strafeDir          = 1;
     this.strafeAngle        = 0;
     this.fireTimer          = 0;
-    this.FIRE_INTERVAL      = 0.35;
+    this.FIRE_INTERVAL      = p.fireInterval;
     this.jumpTimer          = 0;
     this.JUMP_INTERVAL      = 0.5;
-    this.JUMP_PROB          = 0.75;
+    this.JUMP_PROB          = p.jumpProb;
     this._wantsAttack       = false;
     this._wantsMelee        = false;
 
@@ -38,7 +47,7 @@ export class AIController {
     const origTakeDamage = character.takeDamage.bind(character);
     character.takeDamage = (amount) => {
       origTakeDamage(amount);
-      if (Math.random() < 0.6) this._enterEvade();
+      if (Math.random() < this._evadeProb) this._enterEvade();
     };
   }
 

@@ -240,6 +240,37 @@
 
     .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
 
+    /* Difficulty selector */
+    .diff-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .diff-label {
+      font-size: 13px;
+      color: #6699bb;
+      margin-right: 4px;
+    }
+    .diff-btn {
+      background: rgba(20, 30, 60, 0.7);
+      border: 2px solid rgba(80, 160, 255, 0.25);
+      color: #88aacc;
+      padding: 7px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .diff-btn:hover { border-color: rgba(80,160,255,0.55); color: #cce; }
+    .diff-btn.diff-active {
+      background: linear-gradient(135deg, #003a99, #0077ff);
+      border-color: #0088ff;
+      color: #fff;
+      box-shadow: 0 0 14px rgba(0,120,255,0.4);
+    }
+
     .btn {
       background: linear-gradient(135deg, #003a99, #0077ff);
       border: none;
@@ -495,6 +526,14 @@
   <div id="menu" class="overlay">
     <h1>🌊 Seestern Fighters</h1>
     <div class="subtitle">v0.4 — Arena Edition</div>
+    <!-- Difficulty selector -->
+    <div class="diff-row">
+      <span class="diff-label">Schwierigkeit:</span>
+      <button class="diff-btn" data-diff="easy">😴 Easy</button>
+      <button class="diff-btn diff-active" data-diff="medium">⚡ Medium</button>
+      <button class="diff-btn" data-diff="hard">💀 Hard</button>
+    </div>
+
     <p>Wähle deinen Spielmodus:</p>
     <div class="btn-row">
       <button class="btn" id="btn-vs-ai">🤖 Spieler vs KI</button>

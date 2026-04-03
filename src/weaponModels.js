@@ -85,14 +85,26 @@ export function buildPickupMarkerMesh(weaponType) {
   else if (weaponType === 'saege' || weaponType === 'spike')    model = buildSpikeAuraMesh();
   else                                                           model = buildCoralGunMesh();
 
-  if (model) g.add(model);
+  if (model) {
+    model.scale.setScalar(1.9); // big enough to spot across the arena
+    g.add(model);
+  }
 
-  // Glow ring underneath
+  // Large pulsing glow ring underneath
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.38, 0.04, 6, 20),
-    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.6 })
+    new THREE.TorusGeometry(0.6, 0.07, 6, 24),
+    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.75 })
   );
   ring.rotation.x = Math.PI / 2;
   g.add(ring);
+
+  // Second inner ring for depth
+  const ring2 = new THREE.Mesh(
+    new THREE.TorusGeometry(0.35, 0.04, 5, 18),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
+  );
+  ring2.rotation.x = Math.PI / 2;
+  g.add(ring2);
+
   return g;
 }
