@@ -7,6 +7,12 @@
 import * as THREE from 'three';
 import { WeaponSlots } from './weapons.js';
 import { CharacterAnimator } from './animation.js';
+import {
+  buildShellGunMesh,
+  buildBubbleCannonMesh,
+  buildSpikeAuraMesh,
+  buildCoralGunMesh,
+} from './weaponModels.js';
 
 export const WORLD_HALF = 19;   // half of play-area size
 const GRAVITY            = 22;  // units / s²
@@ -33,6 +39,7 @@ export class Character {
     this.attackLanded  = false;   // did this jump already deal damage?
     this.hitFlashTimer = 0;
     this._wasHit       = false;   // single-frame flag for animator
+    this.hitImpulse    = 0;       // scale-up impulse on hit
 
     // Death animation state
     this._dying      = false;
@@ -106,6 +113,12 @@ export class Character {
       this.mesh.add(pupil);
     }
 
+    // Weapon mount — right-hand side
+    this._weaponMount = new THREE.Group();
+    this._weaponMount.position.set(0.7, 0.1, 0);
+    this.mesh.add(this._weaponMount);
+    this._currentWeaponModel = null;
+
     // Name label (drawn via sprite)
     this._addNameLabel();
   }
@@ -126,6 +139,31 @@ export class Character {
     sprite.scale.set(2, 0.5, 1);
     sprite.position.set(0, 1.0, 0);
     this.mesh.add(sprite);
+  }
+
+  showWeaponModel(weapon) {
+    // Clear previous model
+    while (this._weaponMount.children.length > 0) {
+      this._weaponMount.remove(this._weaponMount.children[0]);
+    }
+    if (!weapon) {
+      this._currentWeaponModel = null;
+      return;
+    }
+    let model;
+    const n = weapon.name.toLowerCase();
+    if (n.includes('pistole') || n.includes('muschel') || n.includes('shell')) {
+      model = buildShellGunMesh();
+    } else if (n.includes('kanone') || n.includes('blase') || n.includes('bubble')) {
+      model = buildBubbleCannonMesh();
+    } else if (n.includes('ge') || n.includes('stachel') || n.includes('spike')) {
+      model = buildSpikeAuraMesh();
+    } else {
+      model = buildCoralGunMesh();
+    }
+    model.scale.setScalar(0.75);
+    this._weaponMount.add(model);
+    this._currentWeaponModel = model;
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -168,6 +206,7 @@ export class Character {
     this.health = Math.max(0, this.health - amount);
     this.hitFlashTimer = 0.18;
     this._wasHit = true;
+    this.hitImpulse = 0.3;
     if (this.health <= 0) {
       this.isAlive = false;
       this._dying  = true;
@@ -297,6 +336,24 @@ export class Character {
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer -= dt;
       this.bodyMat.color.setHex(this.hitFlashTimer > 0 ? 0xffffff : this.color);
+    }
+
+    // Hit impulse — brief scale-up on damage
+    if (this.hitImpulse > 0) {
+      this.hitImpulse -= dt;
+      const s = 1 + this.hitImpulse * 0.5;
+      this.mesh.scale.set(s, s, s);
+    } else {
+      this.mesh.scale.set(1, 1, 1);
+    }
+
+    // Rotate spike aura continuously if equipped
+    if (this._currentWeaponModel) {
+      this._currentWeaponModel.rotation.y += 2 * dt;
+    }
+    // Bob weapon mount
+    if (this._weaponMount) {
+      this._weaponMount.position.y = 0.1 + Math.sin(Date.now() * 0.003) * 0.04;
     }
   }
 }

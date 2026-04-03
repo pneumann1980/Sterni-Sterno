@@ -62,7 +62,9 @@ class Game {
 
     this.player1  = null;
     this.player2  = null;
+    this.player3  = null;
     this.ai       = null;
+    this.ai2      = null;
     this.lastTime = 0;
 
     this._selectedLevel = 0;
@@ -107,6 +109,8 @@ class Game {
       this._startGame(GameMode.VS_AI, this._selectedLevel);
     document.getElementById('btn-vs-player').onclick = () =>
       this._startGame(GameMode.LOCAL_VERSUS, this._selectedLevel);
+    document.getElementById('btn-vs-two-ai').onclick = () =>
+      this._startGame(GameMode.VS_TWO_AI, this._selectedLevel);
   }
 
   _bindGameButtons() {
@@ -157,17 +161,34 @@ class Game {
     this.world.scene.add(this.player1.mesh);
 
     // Player 2 / Enemy — orange starfish
+    const p2Name = mode === GameMode.VS_TWO_AI ? 'KI-Gegner 1'
+                 : mode === GameMode.VS_AI      ? 'KI-Gegner'
+                 : 'Spieler 2';
     this.player2 = new Character({
-      name:     mode === GameMode.VS_AI ? 'KI-Gegner' : 'Spieler 2',
+      name:     p2Name,
       color:    0xff5500,
       position: [...(levelDef.spawnPositions[1] || [8, 0, 0])],
     });
     this._equipDefault(this.player2);
     this.world.scene.add(this.player2.mesh);
 
+    // Player 3 / second enemy — green starfish (VS_TWO_AI only)
+    if (mode === GameMode.VS_TWO_AI) {
+      this.player3 = new Character({
+        name:     'KI-Gegner 2',
+        color:    0x22cc44,
+        position: [...(levelDef.spawnPositions[2] || [0, 0, -8])],
+      });
+      this._equipDefault(this.player3);
+      this.world.scene.add(this.player3.mesh);
+    }
+
     // AI wiring
-    this.ai = mode === GameMode.VS_AI
+    this.ai = (mode === GameMode.VS_AI || mode === GameMode.VS_TWO_AI)
       ? new AIController(this.player2, this.player1)
+      : null;
+    this.ai2 = mode === GameMode.VS_TWO_AI && this.player3
+      ? new AIController(this.player3, this.player1)
       : null;
 
     // Load level (builds obstacles, decorations, pickups)
@@ -200,7 +221,9 @@ class Game {
   _cleanupCharacters() {
     if (this.player1) { this.world.scene.remove(this.player1.mesh); this.player1 = null; }
     if (this.player2) { this.world.scene.remove(this.player2.mesh); this.player2 = null; }
-    this.ai = null;
+    if (this.player3) { this.world.scene.remove(this.player3.mesh); this.player3 = null; }
+    this.ai  = null;
+    this.ai2 = null;
     this.projectiles.clear();
   }
 
@@ -305,8 +328,9 @@ class Game {
     }
 
     if (weapon.type === 'melee') {
-      const other = character === this.player1 ? this.player2 : this.player1;
-      const hits  = this.combat.processMeleeAttack(character, [other]);
+      const others = [this.player1, this.player2, this.player3]
+        .filter(c => c && c !== character);
+      const hits = this.combat.processMeleeAttack(character, others);
       if (hits.length > 0) {
         hits.forEach(h => this.hud.showHit(character.name, h.damage));
       }
@@ -331,7 +355,7 @@ class Game {
   _updatePickupHints() {
     const HINT_RANGE = 2.5;
 
-    [this.player1, this.player2].forEach((char, i) => {
+    [this.player1, this.player2, this.player3].forEach((char, i) => {
       if (!char || !char.isAlive) return;
       const nearest = this.pickups.getNearestPickup(char.position);
       if (nearest && nearest.dist <= HINT_RANGE) {
@@ -420,22 +444,36 @@ class Game {
         this._fireActiveWeapon(this.player2);
       }
       if (aiActions.wantsMelee) {
-        this.combat.processMeleeAttack(this.player2, [this.player1])
+        const meleeTargets = [this.player1, this.player3].filter(Boolean);
+        this.combat.processMeleeAttack(this.player2, meleeTargets)
           .forEach(h => this.hud.showHit(this.player2.name, h.damage));
+      }
+    }
+    if (this.ai2 && this.player3 && this.player3.isAlive) {
+      const ai2Actions = this.ai2.update(dt, this.pickups);
+      if (ai2Actions.wantsAttack) {
+        this._fireActiveWeapon(this.player3);
+      }
+      if (ai2Actions.wantsMelee) {
+        const meleeTargets = [this.player1, this.player2].filter(Boolean);
+        this.combat.processMeleeAttack(this.player3, meleeTargets)
+          .forEach(h => this.hud.showHit(this.player3.name, h.damage));
       }
     }
 
     // Physics
     if (this.player1) this.player1.update(dt);
     if (this.player2) this.player2.update(dt);
+    if (this.player3) this.player3.update(dt);
 
     // Obstacle collision
     if (this.player1 && this.player1.isAlive) this.obstacles.checkCharacterCollision(this.player1);
     if (this.player2 && this.player2.isAlive) this.obstacles.checkCharacterCollision(this.player2);
+    if (this.player3 && this.player3.isAlive) this.obstacles.checkCharacterCollision(this.player3);
 
     // Jump-attack combat
     const jumpHits = this.combat.processCombat(
-      [this.player1, this.player2].filter(Boolean)
+      [this.player1, this.player2, this.player3].filter(Boolean)
     );
     jumpHits.forEach(h => {
       this.hud.showHit(h.attacker.name, h.damage);
@@ -443,7 +481,7 @@ class Game {
     });
 
     // Projectile combat
-    const chars      = [this.player1, this.player2].filter(Boolean);
+    const chars      = [this.player1, this.player2, this.player3].filter(Boolean);
     const obsData    = this.obstacles.getObstacleData();
     const projHits   = this.projectiles.update(dt, chars, obsData);
     projHits.forEach(h => {
@@ -480,13 +518,38 @@ class Game {
     // Win condition
     if (this.player1 && this.player2) {
       if (!this.player1.isAlive) {
-        this._endGame(this.player2.name);
-        return;
-      } else if (!this.player2.isAlive) {
-        this._endGame(this.player1.name);
+        // Player 1 is down — enemies win
+        this._endGame(this.player2.isAlive ? this.player2.name : (this.player3 ? this.player3.name : this.player2.name));
         return;
       }
+      if (this.state.mode === GameMode.VS_TWO_AI) {
+        // Player 1 wins only when both enemies are defeated
+        const p2Dead = !this.player2.isAlive;
+        const p3Dead = !this.player3 || !this.player3.isAlive;
+        if (p2Dead && p3Dead) {
+          this._endGame(this.player1.name);
+          return;
+        }
+      } else {
+        if (!this.player2.isAlive) {
+          this._endGame(this.player1.name);
+          return;
+        }
+      }
     }
+
+    // Sync weapon display on characters
+    const syncWeapon = (char) => {
+      if (!char || !char.isAlive) return;
+      const active = char.weaponSlots.getActive();
+      if (char._lastSyncedWeapon !== active) {
+        char.showWeaponModel(active);
+        char._lastSyncedWeapon = active;
+      }
+    };
+    syncWeapon(this.player1);
+    syncWeapon(this.player2);
+    syncWeapon(this.player3);
 
     // Camera
     if (this.player1 && this.player2) {

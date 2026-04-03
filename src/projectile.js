@@ -33,10 +33,25 @@ export class Projectile {
 
     this._hit = false;
 
-    // Build mesh
+    // Glowing bubble projectile
     const geo = new THREE.SphereGeometry(radius, 8, 6);
-    const mat = new THREE.MeshBasicMaterial({ color });
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.85,
+    });
     this.mesh = new THREE.Mesh(geo, mat);
+
+    // Outer glow shell
+    const glowMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.25,
+      side: THREE.BackSide,
+    });
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.0, 7, 5), glowMat);
+    this.mesh.add(glow);
+
     this.mesh.position.copy(this.position);
   }
 

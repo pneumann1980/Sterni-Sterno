@@ -5,6 +5,7 @@
 
 export const GameMode = {
   VS_AI:        'vs-ai',
+  VS_TWO_AI:    'vs-two-ai',
   LOCAL_VERSUS: 'local-versus',
 };
 
