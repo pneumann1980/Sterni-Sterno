@@ -5,6 +5,7 @@
  */
 
 import * as THREE from 'three';
+import { buildPickupMarkerMesh } from './weaponModels.js';
 
 const COLLECT_RADIUS = 1.5;
 const RESPAWN_TIME   = 8.0;
@@ -31,6 +32,7 @@ export class WeaponPickup {
     this._collected    = false;
     this._respawnTimer = 0;
     this._bobTime      = Math.random() * Math.PI * 2; // random phase
+    this._phase        = Math.random() * Math.PI * 2;
 
     this._buildMesh();
     this.scene.add(this.mesh);
@@ -38,11 +40,7 @@ export class WeaponPickup {
 
   _buildMesh() {
     const weaponKey = this._weaponKey();
-    const color     = PICKUP_COLORS[weaponKey] || 0xffffff;
-
-    const geo = new THREE.TorusGeometry(0.35, 0.12, 8, 16);
-    const mat = new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.3 });
-    this.mesh = new THREE.Mesh(geo, mat);
+    this.mesh = buildPickupMarkerMesh(weaponKey);
     this.mesh.position.copy(this.position);
     this.mesh.position.y = FLOAT_HEIGHT;
     this.mesh.castShadow = false;
@@ -67,12 +65,11 @@ export class WeaponPickup {
 
     this._bobTime += dt;
 
-    // Floating bob
-    this.mesh.position.y = FLOAT_HEIGHT + Math.sin(this._bobTime * 2) * 0.1;
+    // Floating bob with individual phase offset
+    this.mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002 + this._phase) * 0.15;
 
     // Spinning
-    this.mesh.rotation.y += SPIN_SPEED * dt;
-    this.mesh.rotation.x += SPIN_SPEED * 0.3 * dt;
+    this.mesh.rotation.y += 1.2 * dt;
   }
 
   /**

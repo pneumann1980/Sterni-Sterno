@@ -19,19 +19,20 @@ export class AIController {
     this.stateTimer = 0;
 
     // Tuning
-    this.SPEED_FACTOR    = 0.72;
-    this.ATTACK_RANGE    = 2.4;
-    this.FIRE_RANGE      = 10.0;
-    this.EVADE_DURATION  = 1.2;  // seconds to evade after being hit
-    this.strafeDir       = 1;
-    this.strafeAngle     = 0;
-    this.fireTimer       = 0;
-    this.FIRE_INTERVAL   = 0.45;
-    this.jumpTimer       = 0;
-    this.JUMP_INTERVAL   = 0.5;
-    this.JUMP_PROB       = 0.65;
-    this._wantsAttack    = false;
-    this._wantsMelee     = false;
+    this.SPEED_FACTOR       = 0.80;
+    this.ATTACK_RANGE       = 2.4;
+    this.FIRE_RANGE         = 10.0;
+    this.EVADE_DURATION     = 1.2;  // seconds to evade after being hit
+    this.STRAFE_SPEED_BONUS = 1.15;
+    this.strafeDir          = 1;
+    this.strafeAngle        = 0;
+    this.fireTimer          = 0;
+    this.FIRE_INTERVAL      = 0.35;
+    this.jumpTimer          = 0;
+    this.JUMP_INTERVAL      = 0.5;
+    this.JUMP_PROB          = 0.75;
+    this._wantsAttack       = false;
+    this._wantsMelee        = false;
 
     // Listen for damage to trigger evade state
     const origTakeDamage = character.takeDamage.bind(character);
@@ -87,6 +88,10 @@ export class AIController {
         break;
       }
       case 'strafe': {
+        // Occasionally flip strafe direction for unpredictability
+        if (this.stateTimer > 0 && Math.random() < 0.01) {
+          this.strafeDir = -this.strafeDir;
+        }
         // Orbit target at medium range + occasionally close in
         this.strafeAngle += dt * 1.2 * this.strafeDir;
         const orbitDist = 4.5;
@@ -96,8 +101,8 @@ export class AIController {
         const toZ = targetZ - ch.position.z;
         const toDist = Math.sqrt(toX * toX + toZ * toZ);
         if (toDist > 0.3) {
-          ch.velocity.x = (toX / toDist) * speed;
-          ch.velocity.z = (toZ / toDist) * speed;
+          ch.velocity.x = (toX / toDist) * speed * this.STRAFE_SPEED_BONUS;
+          ch.velocity.z = (toZ / toDist) * speed * this.STRAFE_SPEED_BONUS;
         }
         break;
       }
