@@ -1,107 +1,149 @@
 /**
  * weaponModels.js
- * Builder functions returning THREE.Group for each weapon type.
- * Used for character weapon mounts and pickup markers.
+ * 3D model builders for each weapon type.
+ * All models are large enough to read at a glance on screen.
+ *
+ * buildShellGunMesh()     — Muschel-Shooter (golden fan shell)
+ * buildBubbleCannonMesh() — Blasenkanone (blue barrel + glowing bubble)
+ * buildSpikeOrbitMesh()   — Stachel-Aura (orbit ring, attached to character body)
+ * buildPickupMarkerMesh() — Floating pickup in the level
  */
 
 import * as THREE from 'three';
 
-/** Shell Gun (Muschel) — fan of flat curved plates */
+// ── Muschel-Shooter ────────────────────────────────────────────────────────────
 export function buildShellGunMesh() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xddaa55 });
-  // Central body — sphere
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), mat);
-  g.add(body);
-  // 3 curved "shell" plates arranged in a fan
-  for (let i = 0; i < 3; i++) {
-    const angle = (i / 3) * Math.PI - Math.PI / 3;
-    const plate = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.04, 5, 8, Math.PI * 0.7), mat);
-    plate.position.set(Math.cos(angle) * 0.18, 0, Math.sin(angle) * 0.18);
-    plate.rotation.y = angle;
+  const g   = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color: 0xdda840, emissive: 0x443300, emissiveIntensity: 0.3 });
+  const lightMat = new THREE.MeshLambertMaterial({ color: 0xfff0b0, emissive: 0x665500, emissiveIntensity: 0.4 });
+
+  // Central pearl
+  const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), lightMat);
+  g.add(pearl);
+
+  // 4 shell plates fanning outward
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 1.4 - Math.PI * 0.35;
+    const plate = new THREE.Mesh(
+      new THREE.TorusGeometry(0.22, 0.07, 5, 10, Math.PI * 0.75),
+      mat
+    );
+    plate.position.set(Math.cos(angle) * 0.24, Math.sin(angle) * 0.10, 0);
+    plate.rotation.z = angle + Math.PI / 2;
     g.add(plate);
   }
-  return g;
-}
 
-/** Bubble Cannon (Blasenkanone) — barrel + bubble */
-export function buildBubbleCannonMesh() {
-  const g = new THREE.Group();
-  const barrelMat = new THREE.MeshLambertMaterial({ color: 0x4499ff });
-  const bubbleMat = new THREE.MeshLambertMaterial({ color: 0x88ccff, transparent: true, opacity: 0.7 });
-  // Barrel
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.45, 8), barrelMat);
+  // Barrel pointing forward (+X)
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.10, 0.45, 8), mat);
   barrel.rotation.z = Math.PI / 2;
-  barrel.position.set(0.22, 0, 0);
+  barrel.position.set(0.42, 0, 0);
   g.add(barrel);
-  // Bubble at tip
-  const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), bubbleMat);
-  bubble.position.set(0.47, 0, 0);
+
+  return g;
+}
+
+// ── Blasenkanone ───────────────────────────────────────────────────────────────
+export function buildBubbleCannonMesh() {
+  const g          = new THREE.Group();
+  const barrelMat  = new THREE.MeshLambertMaterial({ color: 0x2277cc, emissive: 0x001144, emissiveIntensity: 0.3 });
+  const ringMat    = new THREE.MeshLambertMaterial({ color: 0x44aaff, emissive: 0x002266, emissiveIntensity: 0.5 });
+  const bubbleMat  = new THREE.MeshLambertMaterial({
+    color: 0x88ddff, emissive: 0x004488, emissiveIntensity: 0.5,
+    transparent: true, opacity: 0.75,
+  });
+
+  // Wide barrel
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.16, 0.55, 10), barrelMat);
+  barrel.rotation.z = Math.PI / 2;
+  barrel.position.set(0.28, 0, 0);
+  g.add(barrel);
+
+  // Decorative rings around barrel
+  for (let r = 0; r < 3; r++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.04, 6, 14), ringMat);
+    ring.position.set(0.10 + r * 0.18, 0, 0);
+    ring.rotation.y = Math.PI / 2;
+    g.add(ring);
+  }
+
+  // Large bubble at muzzle — this is what makes it recognisable
+  const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), bubbleMat);
+  bubble.position.set(0.72, 0, 0);
   g.add(bubble);
+
+  // Outer glow of bubble
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x44ccff, transparent: true, opacity: 0.18, side: THREE.BackSide });
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), glowMat);
+  glow.position.set(0.72, 0, 0);
+  g.add(glow);
+
   return g;
 }
 
-/** Spike Aura (Stachel) — ring of rotating spikes */
-export function buildSpikeAuraMesh() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xff4400, emissive: 0x441100 });
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI * 2;
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.28, 5), mat);
-    spike.position.set(Math.cos(angle) * 0.32, 0, Math.sin(angle) * 0.32);
-    spike.rotation.z = -Math.PI / 2;
-    spike.rotation.y = angle;
+// ── Stachel-Aura orbit ring ────────────────────────────────────────────────────
+// Attached to the CHARACTER BODY (not weapon mount) — circles the whole starfish
+export function buildSpikeOrbitMesh() {
+  const g   = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xff2200, emissive: 0x880000, emissiveIntensity: 0.6,
+  });
+  const tipMat = new THREE.MeshLambertMaterial({
+    color: 0xff6600, emissive: 0xbb3300, emissiveIntensity: 0.7,
+  });
+
+  const SPIKE_COUNT  = 6;
+  const ORBIT_RADIUS = 1.6;
+
+  for (let i = 0; i < SPIKE_COUNT; i++) {
+    const angle = (i / SPIKE_COUNT) * Math.PI * 2;
+
+    // Spike base (thick cone body)
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.7, 6), mat);
+    spike.position.set(Math.cos(angle) * ORBIT_RADIUS, 0.15, Math.sin(angle) * ORBIT_RADIUS);
+    // Point outward: default cone is along +Y → rotate to point along +X then rotate Y to angle
+    spike.rotation.set(0, angle, -Math.PI / 2);
     g.add(spike);
+
+    // Glowing tip ball
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.10, 7, 6), tipMat);
+    tip.position.set(
+      Math.cos(angle) * (ORBIT_RADIUS + 0.42),
+      0.15,
+      Math.sin(angle) * (ORBIT_RADIUS + 0.42)
+    );
+    g.add(tip);
   }
+
   return g;
 }
 
-/** Coral Gun (Koralle) — branching coral structure */
-export function buildCoralGunMesh() {
+// ── Pickup marker ──────────────────────────────────────────────────────────────
+export function buildPickupMarkerMesh(weaponKey) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xff6688, emissive: 0x220011 });
-  // Main stem
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.35, 6), mat);
-  stem.position.set(0.17, 0, 0);
-  stem.rotation.z = Math.PI / 2;
-  g.add(stem);
-  // Three branches
-  for (let i = 0; i < 3; i++) {
-    const bAngle = (i / 3) * Math.PI * 2;
-    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.22, 5), mat);
-    branch.position.set(0.30 + Math.cos(bAngle) * 0.08, Math.sin(bAngle) * 0.08, 0);
-    branch.rotation.z = Math.PI / 2 + (i - 1) * 0.4;
-    g.add(branch);
-  }
-  return g;
-}
 
-/** Generic pickup marker (replaces plain ring) */
-export function buildPickupMarkerMesh(weaponType) {
-  const g = new THREE.Group();
+  // Choose model by weapon key
   let model;
-  if (weaponType === 'pistole' || weaponType === 'shell')       model = buildShellGunMesh();
-  else if (weaponType === 'blasenkanone' || weaponType === 'bubble') model = buildBubbleCannonMesh();
-  else if (weaponType === 'saege' || weaponType === 'spike')    model = buildSpikeAuraMesh();
-  else                                                           model = buildCoralGunMesh();
-
-  if (model) {
-    model.scale.setScalar(1.9); // big enough to spot across the arena
-    g.add(model);
+  switch (weaponKey) {
+    case 'muschelShooter': model = buildShellGunMesh();     break;
+    case 'blasenkanone':   model = buildBubbleCannonMesh(); break;
+    case 'stachelAura':    model = buildSpikeOrbitMesh();   break;
+    default:               model = buildShellGunMesh();
   }
 
-  // Large pulsing glow ring underneath
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.6, 0.07, 6, 24),
-    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.75 })
-  );
+  // Scale up so it's unmissable in the level
+  model.scale.setScalar(2.2);
+  g.add(model);
+
+  // Glowing ground ring
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.80 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.09, 6, 28), ringMat);
   ring.rotation.x = Math.PI / 2;
   g.add(ring);
 
-  // Second inner ring for depth
+  // Second pulsing inner ring
   const ring2 = new THREE.Mesh(
-    new THREE.TorusGeometry(0.35, 0.04, 5, 18),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
+    new THREE.TorusGeometry(0.40, 0.05, 5, 20),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.30 })
   );
   ring2.rotation.x = Math.PI / 2;
   g.add(ring2);

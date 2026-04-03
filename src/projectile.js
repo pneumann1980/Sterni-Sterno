@@ -21,8 +21,8 @@ export class Projectile {
    * @param {number} config.radius  - sphere radius for visual
    * @param {number} config.color   - hex color
    */
-  constructor({ position, direction, speed, damage, owner, lifetime, radius, color }) {
-    this.position = position.clone();
+  constructor({ position, direction, speed, damage, owner, lifetime, radius, color, style = 'shell' }) {
+    this.position  = position.clone();
     this.direction = direction.clone().normalize();
     this.speed     = speed;
     this.damage    = damage;
@@ -30,29 +30,66 @@ export class Projectile {
     this.lifetime  = lifetime;
     this.radius    = radius;
     this.color     = color;
+    this.style     = style;
+    this._hit      = false;
 
-    this._hit = false;
-
-    // Glowing bubble projectile
-    const geo = new THREE.SphereGeometry(radius, 8, 6);
-    const mat = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.85,
-    });
-    this.mesh = new THREE.Mesh(geo, mat);
-
-    // Outer glow shell
-    const glowMat = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.25,
-      side: THREE.BackSide,
-    });
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(radius * 2.0, 7, 5), glowMat);
-    this.mesh.add(glow);
+    this.mesh = style === 'bubble'
+      ? this._buildBubbleMesh(radius, color)
+      : this._buildShellMesh(radius, color);
 
     this.mesh.position.copy(this.position);
+  }
+
+  /** Muschel-Shooter projectile — solid pearl with bright core */
+  _buildShellMesh(radius, color) {
+    const group = new THREE.Group();
+    const core  = new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 9, 7),
+      new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.6 })
+    );
+    group.add(core);
+    // Bright white highlight
+    const highlight = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 0.45, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    highlight.position.set(radius * 0.3, radius * 0.3, 0);
+    group.add(highlight);
+    // Glow halo
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 1.8, 7, 5),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.20, side: THREE.BackSide })
+    );
+    group.add(glow);
+    return group;
+  }
+
+  /** Blasenkanone projectile — large translucent bubble with sheen */
+  _buildBubbleMesh(radius, color) {
+    const group = new THREE.Group();
+    // Translucent shell
+    const outer = new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 12, 9),
+      new THREE.MeshLambertMaterial({
+        color, emissive: color, emissiveIntensity: 0.3,
+        transparent: true, opacity: 0.55,
+        side: THREE.DoubleSide,
+      })
+    );
+    group.add(outer);
+    // Inner shimmer
+    const inner = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 0.7, 10, 7),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 })
+    );
+    group.add(inner);
+    // Large outer glow
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 1.6, 9, 7),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14, side: THREE.BackSide })
+    );
+    group.add(glow);
+    return group;
   }
 
   update(dt) {

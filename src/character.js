@@ -10,8 +10,7 @@ import { CharacterAnimator } from './animation.js';
 import {
   buildShellGunMesh,
   buildBubbleCannonMesh,
-  buildSpikeAuraMesh,
-  buildCoralGunMesh,
+  buildSpikeOrbitMesh,
 } from './weaponModels.js';
 
 export const WORLD_HALF = 19;   // half of play-area size
@@ -156,26 +155,40 @@ export class Character {
   }
 
   showWeaponModel(weapon) {
-    // Clear previous model
+    // Clear weapon mount
     while (this._weaponMount.children.length > 0) {
       this._weaponMount.remove(this._weaponMount.children[0]);
     }
-    if (!weapon) {
-      this._currentWeaponModel = null;
+    // Clear any orbit ring from previous aura weapon
+    if (this._spikeOrbit) {
+      this.mesh.remove(this._spikeOrbit);
+      this._spikeOrbit = null;
+    }
+    this._currentWeaponModel = null;
+
+    if (!weapon) return;
+
+    const key = weapon.key || '';
+
+    if (key === 'stachelAura') {
+      // Stachel-Aura: big orbit ring surrounds the whole character body
+      this._spikeOrbit = buildSpikeOrbitMesh();
+      this.mesh.add(this._spikeOrbit);
+      this._currentWeaponModel = this._spikeOrbit;
       return;
     }
+
+    // Projectile weapons — mount on the right-hand side
     let model;
-    const n = weapon.name.toLowerCase();
-    if (n.includes('pistole') || n.includes('muschel') || n.includes('shell')) {
+    if (key === 'muschelShooter') {
       model = buildShellGunMesh();
-    } else if (n.includes('kanone') || n.includes('blase') || n.includes('bubble')) {
+    } else if (key === 'blasenkanone') {
       model = buildBubbleCannonMesh();
-    } else if (n.includes('ge') || n.includes('stachel') || n.includes('spike')) {
-      model = buildSpikeAuraMesh();
     } else {
-      model = buildCoralGunMesh();
+      model = buildShellGunMesh(); // fallback
     }
-    model.scale.setScalar(1.8);   // large enough to read at a glance
+
+    model.scale.setScalar(1.8);
     this._weaponMount.add(model);
     this._currentWeaponModel = model;
   }
@@ -365,13 +378,16 @@ export class Character {
       this.mesh.scale.set(1, 1, 1);
     }
 
-    // Rotate spike aura continuously if equipped
-    if (this._currentWeaponModel) {
-      this._currentWeaponModel.rotation.y += 2 * dt;
+    // Rotate spike orbit (stachel aura) — fast, dramatic
+    if (this._spikeOrbit) {
+      this._spikeOrbit.rotation.y += 2.8 * dt;
+    } else if (this._currentWeaponModel) {
+      // Gentle bob for held weapons
+      this._currentWeaponModel.rotation.y += 1.2 * dt;
     }
-    // Bob weapon mount
+    // Bob the weapon mount
     if (this._weaponMount) {
-      this._weaponMount.position.y = 0.1 + Math.sin(Date.now() * 0.003) * 0.04;
+      this._weaponMount.position.y = 0.4 + Math.sin(Date.now() * 0.003) * 0.06;
     }
   }
 }

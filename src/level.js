@@ -34,9 +34,9 @@ const level1 = {
     { type: 'seagrass',pos: [ 14, 0,  -5] },
   ],
   pickups: [
-    { pos: [ 0, 0,  0], weapon: 'miniKanone' },
-    { pos: [-4, 0,  4], weapon: 'pistole'    },
-    { pos: [ 4, 0, -4], weapon: 'saege'      },
+    { pos: [ 0, 0,  0], weapon: 'blasenkanone' },
+    { pos: [-4, 0,  4], weapon: 'muschelShooter'    },
+    { pos: [ 4, 0, -4], weapon: 'stachelAura'      },
   ],
   spawnPositions: [[-8, 0, 0], [8, 0, 0]],
 };
@@ -71,10 +71,10 @@ const level2 = {
     { type: 'seagrass',pos: [ 11, 0,   8] },
   ],
   pickups: [
-    { pos: [ 0,  0,  0], weapon: 'miniKanone' },
-    { pos: [-7,  0,  0], weapon: 'pistole'    },
-    { pos: [ 7,  0,  0], weapon: 'saege'      },
-    { pos: [ 0,  0, -4], weapon: 'pistole'    },
+    { pos: [ 0,  0,  0], weapon: 'blasenkanone' },
+    { pos: [-7,  0,  0], weapon: 'muschelShooter'    },
+    { pos: [ 7,  0,  0], weapon: 'stachelAura'      },
+    { pos: [ 0,  0, -4], weapon: 'muschelShooter'    },
   ],
   spawnPositions: [[-10, 0, 0], [10, 0, 0]],
 };
@@ -112,10 +112,10 @@ const level3 = {
     { type: 'pebble',  pos: [ -3, 0,  -1] },
   ],
   pickups: [
-    { pos: [ 0, 0,  0], weapon: 'miniKanone' },
-    { pos: [-3, 0,  6], weapon: 'pistole'    },
-    { pos: [ 3, 0, -6], weapon: 'saege'      },
-    { pos: [-5, 0, -7], weapon: 'pistole'    },
+    { pos: [ 0, 0,  0], weapon: 'blasenkanone' },
+    { pos: [-3, 0,  6], weapon: 'muschelShooter'    },
+    { pos: [ 3, 0, -6], weapon: 'stachelAura'      },
+    { pos: [-5, 0, -7], weapon: 'muschelShooter'    },
   ],
   spawnPositions: [[-8, 0, 0], [8, 0, 0]],
 };

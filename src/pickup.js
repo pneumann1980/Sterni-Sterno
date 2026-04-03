@@ -13,9 +13,9 @@ const FLOAT_HEIGHT   = 0.6;
 const SPIN_SPEED     = 2.0;
 
 const PICKUP_COLORS = {
-  pistole:    0x00ffff, // cyan
-  saege:      0x00cc44, // green
-  miniKanone: 0xff3300, // red
+  muschelShooter: 0xffdd44,
+  blasenkanone:   0x44aaff,
+  stachelAura:    0xff3300,
 };
 
 export class WeaponPickup {
@@ -47,11 +47,12 @@ export class WeaponPickup {
   }
 
   _weaponKey() {
-    if (!this.weapon) return 'pistole';
+    if (!this.weapon) return 'muschelShooter';
+    if (this.weapon.key) return this.weapon.key;
     const name = this.weapon.name || '';
-    if (name.includes('Kanone')) return 'miniKanone';
-    if (name.includes('ge')) return 'saege';
-    return 'pistole';
+    if (name.includes('Blase') || name.includes('Kanone')) return 'blasenkanone';
+    if (name.includes('Stachel')) return 'stachelAura';
+    return 'muschelShooter';
   }
 
   update(dt) {

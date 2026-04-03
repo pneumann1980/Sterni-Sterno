@@ -31,19 +31,21 @@ import { ObstacleSystem }     from './obstacles.js';
 import { LEVELS }             from './level.js';
 import { TouchInput }         from './touch.js';
 
-// Projectile configuration per weapon type
+// Projectile configuration keyed by weapon.key
 const PROJECTILE_CONFIG = {
-  pistole: {
-    speed:    18,
-    lifetime: 2.5,
-    radius:   0.15,
-    color:    0xffee00,
+  muschelShooter: {
+    speed:    20,
+    lifetime: 2.2,
+    radius:   0.18,
+    color:    0xffee88,
+    style:    'shell',   // used by projectile mesh builder
   },
-  miniKanone: {
-    speed:    14,
-    lifetime: 3.0,
-    radius:   0.25,
-    color:    0xff4400,
+  blasenkanone: {
+    speed:    8,
+    lifetime: 3.5,
+    radius:   0.42,      // big hitbox
+    color:    0x44ccff,
+    style:    'bubble',
   },
 };
 
@@ -213,10 +215,12 @@ class Game {
   }
 
   _equipDefault(char) {
-    char.weaponSlots.equip(0, this._cloneWeapon(WEAPONS.pistole));
-    char.weaponSlots.equip(1, this._cloneWeapon(WEAPONS.saege));
-    char.weaponSlots.equip(2, this._cloneWeapon(WEAPONS.pistole));
-    char.weaponSlots.equip(3, this._cloneWeapon(WEAPONS.saege));
+    // Start with Muschel-Shooter in slot 0 (active), Blasenkanone in slot 1,
+    // Stachel-Aura in slot 2, empty slot 3 (available for pickups)
+    char.weaponSlots.equip(0, this._cloneWeapon(WEAPONS.muschelShooter));
+    char.weaponSlots.equip(1, this._cloneWeapon(WEAPONS.blasenkanone));
+    char.weaponSlots.equip(2, this._cloneWeapon(WEAPONS.stachelAura));
+    char.weaponSlots.equip(3, null);
   }
 
   /** Clone a weapon so each character has independent cooldown state. */
@@ -313,9 +317,12 @@ class Game {
     const weapon = character.weaponSlots.getActive();
     if (!weapon || !weapon.isReady) return false;
 
+    // Aura weapons deal damage in the update loop — fire() just resets their cooldown
+    if (weapon.type === 'aura') return false;
+
     if (weapon.type === 'projectile') {
-      const projKey    = weapon.name.includes('Kanone') ? 'miniKanone' : 'pistole';
-      const cfg        = PROJECTILE_CONFIG[projKey];
+      const cfg = PROJECTILE_CONFIG[weapon.key];
+      if (!cfg) return false;
       const direction  = character.getForwardDirection();
 
       // Spawn slightly in front of character at chest height
@@ -332,6 +339,7 @@ class Game {
         lifetime:  cfg.lifetime,
         radius:    cfg.radius,
         color:     cfg.color,
+        style:     cfg.style,  // 'shell' | 'bubble' — drives mesh appearance
       });
       weapon.fire();
       return true;
@@ -480,6 +488,24 @@ class Game {
     if (this.player1 && this.player1.isAlive) this.obstacles.checkCharacterCollision(this.player1);
     if (this.player2 && this.player2.isAlive) this.obstacles.checkCharacterCollision(this.player2);
     if (this.player3 && this.player3.isAlive) this.obstacles.checkCharacterCollision(this.player3);
+
+    // Stachel-Aura: deal contact damage every cooldown tick
+    const allChars = [this.player1, this.player2, this.player3].filter(Boolean);
+    allChars.forEach(attacker => {
+      if (!attacker.isAlive) return;
+      const w = attacker.weaponSlots.getActive();
+      if (!w || w.type !== 'aura' || !w.isReady) return;
+      allChars.forEach(target => {
+        if (target === attacker || !target.isAlive) return;
+        const dx = target.position.x - attacker.position.x;
+        const dz = target.position.z - attacker.position.z;
+        if (Math.sqrt(dx * dx + dz * dz) < 2.0) {
+          target.takeDamage(w.damage);
+          this.hud.showHit(attacker.name, w.damage);
+          w.fire(); // start cooldown so it doesn't fire every frame
+        }
+      });
+    });
 
     // Jump-attack combat
     const jumpHits = this.combat.processCombat(
