@@ -1,10 +1,10 @@
 /**
  * weapons.js
- * Three clearly distinct weapons replacing the old system.
+ * Two projectile weapons used in weapon slots.
+ * (Stachel-Aura, Nova-Explosion and Sand-Tarnung are now Abilities — see abilities.js)
  *
  * Muschel-Shooter  — standard projectile, medium speed/damage
  * Blasenkanone     — large slow bubble, higher damage, bigger hitbox
- * Stachel-Aura     — orbiting spikes, melee/aura, damages enemies on contact
  */
 
 export class Weapon {
@@ -46,15 +46,6 @@ export const WEAPONS = {
     type:     'projectile',
     cooldown: 1.8,
     special:  'large_slow',
-  }),
-
-  stachelAura: new Weapon({
-    key:      'stachelAura',
-    name:     'Stachel-Aura',
-    damage:   8,            // per contact tick
-    type:     'aura',
-    cooldown: 0.45,         // damage tick interval
-    special:  'continuous',
   }),
 };
 

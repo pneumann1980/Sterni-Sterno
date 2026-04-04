@@ -74,7 +74,7 @@ export class TouchInput {
       <!-- Right action zone -->
       <div id="tc-right-zone">
         <div id="tc-btn-row-top">
-          <button id="tc-btn-switch" class="tc-btn tc-btn-sm">↕<span>Waffe</span></button>
+          <button id="tc-btn-switch" class="tc-btn tc-btn-sm">⚡<span>Fähigkeit</span></button>
           <button id="tc-btn-attack" class="tc-btn tc-btn-md">⚔<span>Angriff</span></button>
         </div>
         <div id="tc-jump-zone">

@@ -1,7 +1,10 @@
 /**
  * pickup.js
- * Weapon pickup system for Seestern Fighters.
- * Pickups are floating, spinning tori that respawn after collection.
+ * Weapon and ability pickup system for Seestern Fighters.
+ * Pickups are floating, spinning models that respawn after collection.
+ *
+ * A pickup carries either a `weapon` (Weapon instance) or an `abilityKey`
+ * (string key into ABILITY_DEFS). Both types use the same visual & lifecycle.
  */
 
 import * as THREE from 'three';
@@ -10,28 +13,22 @@ import { buildPickupMarkerMesh } from './weaponModels.js';
 const COLLECT_RADIUS = 1.5;
 const RESPAWN_TIME   = 8.0;
 const FLOAT_HEIGHT   = 0.6;
-const SPIN_SPEED     = 2.0;
-
-const PICKUP_COLORS = {
-  muschelShooter: 0xffdd44,
-  blasenkanone:   0x44aaff,
-  stachelAura:    0xff3300,
-};
 
 export class WeaponPickup {
   /**
    * @param {object} config
-   * @param {number[]} config.position - [x, y, z]
-   * @param {object}  config.weapon   - Weapon instance
-   * @param {THREE.Scene} config.scene
+   * @param {number[]} config.position  - [x, y, z]
+   * @param {object|null}  config.weapon    - Weapon instance, or null for ability pickup
+   * @param {string|null}  config.abilityKey - ability key string, or null for weapon pickup
+   * @param {THREE.Scene}  config.scene
    */
-  constructor({ position, weapon, scene }) {
-    this.position = new THREE.Vector3(...position);
-    this.weapon   = weapon;
-    this.scene    = scene;
+  constructor({ position, weapon, abilityKey, scene }) {
+    this.position   = new THREE.Vector3(...position);
+    this.weapon     = weapon     || null;
+    this.abilityKey = abilityKey || null;
+    this.scene      = scene;
     this._collected    = false;
     this._respawnTimer = 0;
-    this._bobTime      = Math.random() * Math.PI * 2; // random phase
     this._phase        = Math.random() * Math.PI * 2;
 
     this._buildMesh();
@@ -39,55 +36,45 @@ export class WeaponPickup {
   }
 
   _buildMesh() {
-    const weaponKey = this._weaponKey();
-    this.mesh = buildPickupMarkerMesh(weaponKey);
+    const key  = this._resolveKey();
+    this.mesh  = buildPickupMarkerMesh(key);
     this.mesh.position.copy(this.position);
     this.mesh.position.y = FLOAT_HEIGHT;
-    this.mesh.castShadow = false;
+    this.mesh.castShadow  = false;
   }
 
-  _weaponKey() {
-    if (!this.weapon) return 'muschelShooter';
+  _resolveKey() {
+    if (this.abilityKey) return this.abilityKey;
+    if (!this.weapon)    return 'muschelShooter';
     if (this.weapon.key) return this.weapon.key;
     const name = this.weapon.name || '';
     if (name.includes('Blase') || name.includes('Kanone')) return 'blasenkanone';
-    if (name.includes('Stachel')) return 'stachelAura';
     return 'muschelShooter';
   }
 
   update(dt) {
     if (this._collected) {
       this._respawnTimer -= dt;
-      if (this._respawnTimer <= 0) {
-        this.respawn();
-      }
+      if (this._respawnTimer <= 0) this.respawn();
       return;
     }
 
-    this._bobTime += dt;
-
-    // Floating bob with individual phase offset
+    // Floating bob
     this.mesh.position.y = 0.5 + Math.sin(Date.now() * 0.002 + this._phase) * 0.15;
-
-    // Spinning
+    // Spin
     this.mesh.rotation.y += 1.2 * dt;
   }
 
   /**
+   * Returns true if the character is within collection range.
    * @param {Character} character
-   * @returns {object|null} weapon if collected, null otherwise
+   * @returns {boolean}
    */
   checkCollection(character) {
-    if (this._collected || !character || !character.isAlive) return null;
-
+    if (this._collected || !character || !character.isAlive) return false;
     const dx = character.position.x - this.position.x;
     const dz = character.position.z - this.position.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-
-    if (dist < COLLECT_RADIUS) {
-      return this.weapon;
-    }
-    return null;
+    return Math.sqrt(dx * dx + dz * dz) < COLLECT_RADIUS;
   }
 
   collect() {
@@ -115,22 +102,34 @@ export class PickupManager {
 
   /**
    * Create pickups from a level definition.
+   * Pickup entries may have:
+   *   { pos, weapon: 'weaponKey' }   — weapon pickup
+   *   { pos, ability: 'abilityKey' } — ability pickup
+   *
    * @param {object} levelDef
-   * @param {object} WEAPONS_MAP - the WEAPONS catalog
+   * @param {object} WEAPONS_MAP
    */
   spawnFromLevel(levelDef, WEAPONS_MAP) {
     if (!levelDef.pickups) return;
 
-    for (const pickupDef of levelDef.pickups) {
-      const weapon = WEAPONS_MAP[pickupDef.weapon] || null;
-      if (!weapon) continue;
+    for (const def of levelDef.pickups) {
+      let weapon = null, abilityKey = null;
 
-      const pickup = new WeaponPickup({
-        position: pickupDef.pos,
+      if (def.weapon) {
+        weapon = WEAPONS_MAP[def.weapon] || null;
+        if (!weapon) continue;
+      } else if (def.ability) {
+        abilityKey = def.ability;
+      } else {
+        continue;
+      }
+
+      this.pickups.push(new WeaponPickup({
+        position:  def.pos,
         weapon,
-        scene: this.scene,
-      });
-      this.pickups.push(pickup);
+        abilityKey,
+        scene:     this.scene,
+      }));
     }
   }
 
@@ -143,16 +142,16 @@ export class PickupManager {
     weaponList.forEach(({ weapon }, i) => {
       if (!weapon) return;
       const offset = i * 0.8;
-      const pickup = new WeaponPickup({
+      this.pickups.push(new WeaponPickup({
         position: [
           position.x + (Math.random() - 0.5) * 2 + offset,
           0,
           position.z + (Math.random() - 0.5) * 2,
         ],
         weapon,
-        scene: this.scene,
-      });
-      this.pickups.push(pickup);
+        abilityKey: null,
+        scene:      this.scene,
+      }));
     });
   }
 
@@ -160,24 +159,27 @@ export class PickupManager {
    * Update all pickups and return collection events.
    * @param {number} dt
    * @param {Character[]} characters
-   * @returns {Array<{character, weapon, pickup}>}
+   * @returns {Array<{character, weapon, abilityKey, pickup}>}
    */
   update(dt, characters) {
     const events = [];
 
     for (const pickup of this.pickups) {
       pickup.update(dt);
-
       if (pickup._collected) continue;
 
       for (const char of characters) {
         if (!char || !char.isAlive) continue;
 
-        const weapon = pickup.checkCollection(char);
-        if (weapon) {
+        if (pickup.checkCollection(char)) {
           pickup.collect();
-          events.push({ character: char, weapon, pickup });
-          break; // one character collects per pickup per frame
+          events.push({
+            character: char,
+            weapon:     pickup.weapon,
+            abilityKey: pickup.abilityKey,
+            pickup,
+          });
+          break;
         }
       }
     }
@@ -187,9 +189,7 @@ export class PickupManager {
 
   /** Remove all pickups from the scene. */
   clear() {
-    for (const pickup of this.pickups) {
-      pickup.remove();
-    }
+    for (const pickup of this.pickups) pickup.remove();
     this.pickups = [];
   }
 
@@ -199,20 +199,14 @@ export class PickupManager {
    * @returns {{pickup: WeaponPickup, dist: number}|null}
    */
   getNearestPickup(position) {
-    let nearest = null;
-    let nearestDist = Infinity;
-
+    let nearest = null, nearestDist = Infinity;
     for (const pickup of this.pickups) {
       if (pickup._collected) continue;
       const dx = pickup.position.x - position.x;
       const dz = pickup.position.z - position.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest     = pickup;
-      }
+      if (dist < nearestDist) { nearestDist = dist; nearest = pickup; }
     }
-
     return nearest ? { pickup: nearest, dist: nearestDist } : null;
   }
 }

@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { WeaponSlots } from './weapons.js';
+import { AbilityManager } from './abilities.js';
 import { CharacterAnimator } from './animation.js';
 import {
   buildShellGunMesh,
@@ -35,10 +36,10 @@ export class Character {
     this.facingAngle = 0;
 
     // Combat state
-    this.attackLanded  = false;   // did this jump already deal damage?
+    this.attackLanded  = false;
     this.hitFlashTimer = 0;
-    this._wasHit       = false;   // single-frame flag for animator
-    this.hitImpulse    = 0;       // scale-up impulse on hit
+    this._wasHit       = false;
+    this.hitImpulse    = 0;
 
     // Death animation state
     this._dying      = false;
@@ -53,6 +54,14 @@ export class Character {
     // Weapon slots
     this.weaponSlots = new WeaponSlots(4);
 
+    // Ability system
+    this.abilities = new AbilityManager();
+    this.isBuried  = false;  // mirrored from abilities.isBuried
+
+    // Internal visual state
+    this._buriedOpacitySet = false;
+    this._spikeOrbit       = null;
+
     // Three.js mesh
     this._buildMesh();
     this.mesh.position.copy(this.position);
@@ -66,17 +75,15 @@ export class Character {
   _buildMesh() {
     this.mesh = new THREE.Group();
 
-    // Body material with subtle emissive so character pops visually
     this.bodyMat = new THREE.MeshLambertMaterial({
-      color:            this.color,
-      emissive:         this.color,
+      color:             this.color,
+      emissive:          this.color,
       emissiveIntensity: 0.18,
     });
-    // Slightly darker tip material for arm ends — adds visual depth
     const tipColor = new THREE.Color(this.color).multiplyScalar(0.65);
     this.tipMat = new THREE.MeshLambertMaterial({
-      color:            tipColor,
-      emissive:         tipColor,
+      color:             tipColor,
+      emissive:          tipColor,
       emissiveIntensity: 0.12,
     });
 
@@ -90,7 +97,7 @@ export class Character {
 
     // 5 arms — 3 sphere segments tapering; slightly irregular lengths
     this.armMeshes = [];
-    const ARM_LENGTHS = [1.0, 1.08, 0.96, 1.04, 0.98]; // slight irregularity
+    const ARM_LENGTHS = [1.0, 1.08, 0.96, 1.04, 0.98];
     for (let i = 0; i < 5; i++) {
       const angle    = (i / 5) * Math.PI * 2 - Math.PI / 2;
       const armGroup = new THREE.Group();
@@ -104,7 +111,6 @@ export class Character {
       sizes.forEach((r, j) => {
         const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), mats[j]);
         seg.scale.y = 0.42;
-        // Slight downward droop toward tip for organic feel
         seg.position.set(offsets[j], -j * 0.04, 0);
         seg.castShadow = true;
         armGroup.add(seg);
@@ -114,7 +120,7 @@ export class Character {
       this.armMeshes.push(armGroup);
     }
 
-    // Eyes — bigger, more expressive
+    // Eyes
     const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a22 });
     for (const xOff of [-0.18, 0.18]) {
@@ -126,13 +132,12 @@ export class Character {
       this.mesh.add(pupil);
     }
 
-    // Weapon mount — raised and offset so it's clearly visible
+    // Weapon mount
     this._weaponMount = new THREE.Group();
     this._weaponMount.position.set(1.1, 0.4, 0);
     this.mesh.add(this._weaponMount);
     this._currentWeaponModel = null;
 
-    // Name label (drawn via sprite)
     this._addNameLabel();
   }
 
@@ -159,33 +164,19 @@ export class Character {
     while (this._weaponMount.children.length > 0) {
       this._weaponMount.remove(this._weaponMount.children[0]);
     }
-    // Clear any orbit ring from previous aura weapon
-    if (this._spikeOrbit) {
-      this.mesh.remove(this._spikeOrbit);
-      this._spikeOrbit = null;
-    }
+    // NOTE: _spikeOrbit is now managed by ability system in _updateMeshVisuals
     this._currentWeaponModel = null;
 
     if (!weapon) return;
 
     const key = weapon.key || '';
-
-    if (key === 'stachelAura') {
-      // Stachel-Aura: big orbit ring surrounds the whole character body
-      this._spikeOrbit = buildSpikeOrbitMesh();
-      this.mesh.add(this._spikeOrbit);
-      this._currentWeaponModel = this._spikeOrbit;
-      return;
-    }
-
-    // Projectile weapons — mount on the right-hand side
     let model;
     if (key === 'muschelShooter') {
       model = buildShellGunMesh();
     } else if (key === 'blasenkanone') {
       model = buildBubbleCannonMesh();
     } else {
-      model = buildShellGunMesh(); // fallback
+      return; // unknown key — no mount model
     }
 
     model.scale.setScalar(1.8);
@@ -243,19 +234,16 @@ export class Character {
   // ── Update ─────────────────────────────────────────────────────────────────
 
   update(dt) {
-    // Snapshot wasHit for this frame, then reset
     const wasHit = this._wasHit;
     this._wasHit = false;
 
     if (!this.isAlive) {
-      // Death tilt over 0.5 s
       if (this._dying) {
         this._deathTimer += dt;
         const p = Math.min(1, this._deathTimer / 0.5);
         this.mesh.rotation.z = p * (Math.PI / 2);
         if (p >= 1) this._dying = false;
       }
-      // Update animator for death state
       this.animator.update(dt, {
         isMoving: false, isJumping: false, velocityY: 0,
         isAlive: false, wasHit: false, isOnGround: true, velocityMag: 0,
@@ -264,15 +252,11 @@ export class Character {
     }
 
     // Cooldowns
-    if (this.jumpCooldown > 0) {
-      this.jumpCooldown = Math.max(0, this.jumpCooldown - dt);
-    }
+    if (this.jumpCooldown > 0) this.jumpCooldown = Math.max(0, this.jumpCooldown - dt);
     this.weaponSlots.updateCooldowns(dt);
 
     // Gravity
-    if (!this.isOnGround) {
-      this.velocity.y -= GRAVITY * dt;
-    }
+    if (!this.isOnGround) this.velocity.y -= GRAVITY * dt;
 
     // Integrate position
     this.position.x += this.velocity.x * dt;
@@ -299,6 +283,9 @@ export class Character {
     if (Math.abs(vx) > 0.5 || Math.abs(vz) > 0.5) {
       this.facingAngle = Math.atan2(vx, vz);
     }
+
+    // Sync buried state from ability manager
+    this.isBuried = this.abilities.isBuried;
 
     // Sync mesh position
     this.mesh.position.copy(this.position);
@@ -328,31 +315,63 @@ export class Character {
       this.mesh.rotation.y += diff * Math.min(1, 12 * dt);
     }
 
-    // Spin during airtime for visual flair
+    // Spin during airtime
     if (this.isJumping) {
       this.mesh.rotation.z += 4 * dt;
     } else {
-      // Snap back upright (don't override death tilt)
       if (!this._dying && this.isAlive) {
         this.mesh.rotation.z *= 0.85;
         this.mesh.rotation.x *= 0.85;
       }
     }
 
-    // Idle bob — gentle up/down
-    this.mesh.position.y = this.position.y + Math.sin(Date.now() * 0.002) * 0.04;
+    // ── Buried state ──────────────────────────────────────────────────────────
+    if (this.isBuried) {
+      // Half-submerged look
+      this.mesh.position.y = this.position.y - 0.55;
+      if (!this._buriedOpacitySet) {
+        this._setMeshOpacity(0.18);
+        this._buriedOpacitySet = true;
+      }
+    } else {
+      if (this._buriedOpacitySet) {
+        this._setMeshOpacity(1.0);
+        this._buriedOpacitySet = false;
+      }
+      // Normal idle bob
+      this.mesh.position.y = this.position.y + Math.sin(Date.now() * 0.002) * 0.04;
+    }
+
+    // ── Nova charge glow ───────────────────────────────────────────────────────
+    if (this.abilities.isNovaCharging) {
+      const p     = this.abilities.novaChargeProgress;
+      const pulse = Math.sin(Date.now() * 0.015) * 0.5 + 0.5;
+      this.bodyMat.emissive.setHex(0xff6600);
+      this.bodyMat.emissiveIntensity = 0.3 + p * 0.8 + pulse * 0.35;
+    } else if (this.hitFlashTimer <= 0) {
+      this.bodyMat.emissive.setHex(this.color);
+      this.bodyMat.emissiveIntensity = 0.18;
+    }
+
+    // ── Stachel-Aura: auto-show / hide spike orbit ─────────────────────────────
+    const hasAura = this.abilities.hasStachelAura;
+    if (hasAura && !this._spikeOrbit) {
+      this._spikeOrbit = buildSpikeOrbitMesh();
+      this.mesh.add(this._spikeOrbit);
+    } else if (!hasAura && this._spikeOrbit) {
+      this.mesh.remove(this._spikeOrbit);
+      this._spikeOrbit = null;
+    }
 
     // Walk animation — arms pulse when moving
-    if (this.armMeshes && (Math.abs(this.velocity.x) > 0.5 || Math.abs(this.velocity.z) > 0.5)) {
-      // Walk: arms ripple outward/inward with offset phase — like real starfish
+    if (this.armMeshes && (Math.abs(vx) > 0.5 || Math.abs(vz) > 0.5)) {
       const t = Date.now() * 0.009;
       this.armMeshes.forEach((arm, i) => {
         const wave = Math.sin(t + i * 1.26);
-        arm.scale.set(1, 1, 1 + 0.22 * wave);        // stretch along arm
-        arm.rotation.z = 0.10 * Math.sin(t + i * 1.26 + 0.5); // slight up/down flap
+        arm.scale.set(1, 1, 1 + 0.22 * wave);
+        arm.rotation.z = 0.10 * Math.sin(t + i * 1.26 + 0.5);
       });
     } else if (this.armMeshes) {
-      // Idle: slow gentle breathing wiggle
       const t = Date.now() * 0.0025;
       this.armMeshes.forEach((arm, i) => {
         arm.scale.set(1, 1, 1 + 0.07 * Math.sin(t + i * 1.26));
@@ -360,7 +379,7 @@ export class Character {
       });
     }
 
-    // Jump animation — stretch body vertically while airborne
+    // Jump stretch
     if (this.bodyMesh) this.bodyMesh.scale.y = this.isJumping ? 0.6 : 0.38;
 
     // Hit flash
@@ -378,16 +397,32 @@ export class Character {
       this.mesh.scale.set(1, 1, 1);
     }
 
-    // Rotate spike orbit (stachel aura) — fast, dramatic
+    // Rotate spike orbit
     if (this._spikeOrbit) {
       this._spikeOrbit.rotation.y += 2.8 * dt;
     } else if (this._currentWeaponModel) {
-      // Gentle bob for held weapons
       this._currentWeaponModel.rotation.y += 1.2 * dt;
     }
+
     // Bob the weapon mount
     if (this._weaponMount) {
       this._weaponMount.position.y = 0.4 + Math.sin(Date.now() * 0.003) * 0.06;
     }
+  }
+
+  /**
+   * Set the opacity of all mesh materials.
+   * @param {number} opacity 0..1
+   */
+  _setMeshOpacity(opacity) {
+    const transparent = opacity < 1;
+    this.mesh.traverse(obj => {
+      if (!obj.isMesh || !obj.material) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach(m => {
+        m.transparent = transparent;
+        m.opacity     = opacity;
+      });
+    });
   }
 }

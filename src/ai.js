@@ -70,6 +70,13 @@ export class AIController {
 
     if (!ch.isAlive || !tg.isAlive) return { wantsAttack: false, wantsMelee: false };
 
+    // If target is buried, AI loses sight — hold position
+    if (tg.isBuried) {
+      ch.velocity.x *= 0.9;
+      ch.velocity.z *= 0.9;
+      return { wantsAttack: false, wantsMelee: false };
+    }
+
     const dx   = tg.position.x - ch.position.x;
     const dz   = tg.position.z - ch.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
@@ -160,6 +167,10 @@ export class AIController {
         } else if (w.type === 'melee' && dist <= 2.2 && Math.random() < 0.8) {
           this._wantsMelee = true;
         }
+      }
+      // Use nova blast when close range
+      if (ch.abilities && ch.abilities.hasNovaBlast && dist < 4.5 && Math.random() < 0.55) {
+        ch.abilities.startNovaCharge();
       }
     }
 

@@ -3,6 +3,10 @@
  * Level/arena definitions for Seestern Fighters.
  * Each level is a plain data object describing environment, obstacles,
  * decorations, pickups, and spawn positions.
+ *
+ * Pickup entries:
+ *   { pos, weapon: 'weaponKey' }   — drops a weapon pickup
+ *   { pos, ability: 'abilityKey' } — drops an ability pickup
  */
 
 const level1 = {
@@ -34,9 +38,11 @@ const level1 = {
     { type: 'seagrass',pos: [ 14, 0,  -5] },
   ],
   pickups: [
-    { pos: [ 0, 0,  0], weapon: 'blasenkanone' },
-    { pos: [-4, 0,  4], weapon: 'muschelShooter'    },
-    { pos: [ 4, 0, -4], weapon: 'stachelAura'      },
+    { pos: [ 0, 0,  0], weapon:  'blasenkanone'  },
+    { pos: [-4, 0,  4], weapon:  'muschelShooter' },
+    { pos: [ 4, 0, -4], ability: 'stachelAura'    },
+    { pos: [ 7, 0,  7], ability: 'novaBlast'      },
+    { pos: [-7, 0, -7], ability: 'einbuddeln'     },
   ],
   spawnPositions: [[-8, 0, 0], [8, 0, 0]],
 };
@@ -71,10 +77,12 @@ const level2 = {
     { type: 'seagrass',pos: [ 11, 0,   8] },
   ],
   pickups: [
-    { pos: [ 0,  0,  0], weapon: 'blasenkanone' },
-    { pos: [-7,  0,  0], weapon: 'muschelShooter'    },
-    { pos: [ 7,  0,  0], weapon: 'stachelAura'      },
-    { pos: [ 0,  0, -4], weapon: 'muschelShooter'    },
+    { pos: [ 0, 0,  0], weapon:  'blasenkanone'  },
+    { pos: [-7, 0,  0], weapon:  'muschelShooter' },
+    { pos: [ 7, 0,  0], ability: 'stachelAura'    },
+    { pos: [ 0, 0, -4], weapon:  'muschelShooter' },
+    { pos: [-4, 0,  6], ability: 'novaBlast'      },
+    { pos: [ 4, 0, -6], ability: 'einbuddeln'     },
   ],
   spawnPositions: [[-10, 0, 0], [10, 0, 0]],
 };
@@ -112,10 +120,12 @@ const level3 = {
     { type: 'pebble',  pos: [ -3, 0,  -1] },
   ],
   pickups: [
-    { pos: [ 0, 0,  0], weapon: 'blasenkanone' },
-    { pos: [-3, 0,  6], weapon: 'muschelShooter'    },
-    { pos: [ 3, 0, -6], weapon: 'stachelAura'      },
-    { pos: [-5, 0, -7], weapon: 'muschelShooter'    },
+    { pos: [ 0, 0,  0], weapon:  'blasenkanone'  },
+    { pos: [-3, 0,  6], weapon:  'muschelShooter' },
+    { pos: [ 3, 0, -6], ability: 'stachelAura'    },
+    { pos: [-5, 0, -7], weapon:  'muschelShooter' },
+    { pos: [ 6, 0,  7], ability: 'novaBlast'      },
+    { pos: [-7, 0,  5], ability: 'einbuddeln'     },
   ],
   spawnPositions: [[-8, 0, 0], [8, 0, 0]],
 };

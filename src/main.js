@@ -25,6 +25,7 @@ import { CombatSystem }       from './combat.js';
 import { HUD }                from './hud.js';
 import { GameState, GameMode, GameStatus } from './gamestate.js';
 import { WEAPONS }            from './weapons.js';
+import { ABILITY_DEFS }       from './abilities.js';
 import { ProjectileManager }  from './projectile.js';
 import { PickupManager }      from './pickup.js';
 import { ObstacleSystem }     from './obstacles.js';
@@ -70,6 +71,7 @@ class Game {
     this.lastTime = 0;
 
     this._selectedLevel = 0;
+    this._novaEffects   = [];  // active nova explosion VFX
 
     this._bindMenuButtons();
     this._bindGameButtons();
@@ -215,11 +217,11 @@ class Game {
   }
 
   _equipDefault(char) {
-    // Start with Muschel-Shooter in slot 0 (active), Blasenkanone in slot 1,
-    // Stachel-Aura in slot 2, empty slot 3 (available for pickups)
+    // Muschel-Shooter in slot 0 (active), Blasenkanone in slot 1
+    // Slots 2-3 stay empty (available for dropped weapon pickups)
     char.weaponSlots.equip(0, this._cloneWeapon(WEAPONS.muschelShooter));
     char.weaponSlots.equip(1, this._cloneWeapon(WEAPONS.blasenkanone));
-    char.weaponSlots.equip(2, this._cloneWeapon(WEAPONS.stachelAura));
+    char.weaponSlots.equip(2, null);
     char.weaponSlots.equip(3, null);
   }
 
@@ -239,6 +241,9 @@ class Game {
     this.ai  = null;
     this.ai2 = null;
     this.projectiles.clear();
+    // Clean up any live nova VFX
+    for (const eff of this._novaEffects) this.world.scene.remove(eff.mesh);
+    this._novaEffects = [];
   }
 
   _restartGame() {
@@ -310,36 +315,46 @@ class Game {
   // ── Weapon firing ───────────────────────────────────────────────────────────
 
   /**
-   * Fire the character's active weapon.
+   * Fire the character's active weapon with auto-aim assist.
    * Returns true if something was fired.
    */
   _fireActiveWeapon(character) {
     const weapon = character.weaponSlots.getActive();
     if (!weapon || !weapon.isReady) return false;
 
-    // Aura weapons deal damage in the update loop — fire() just resets their cooldown
-    if (weapon.type === 'aura') return false;
-
     if (weapon.type === 'projectile') {
       const cfg = PROJECTILE_CONFIG[weapon.key];
       if (!cfg) return false;
-      const direction  = character.getForwardDirection();
 
-      // Spawn slightly in front of character at chest height
+      // ── Auto-aim: blend toward nearest visible enemy within 12 units ──────
+      const allPlayers = [this.player1, this.player2, this.player3];
+      const enemies = allPlayers.filter(c => c && c.isAlive && c !== character && !c.isBuried);
+      let aimDir = character.getForwardDirection();
+      let nearest = null, nearestDist = 12;
+      enemies.forEach(t => {
+        const d = character.position.distanceTo(t.position);
+        if (d < nearestDist) { nearestDist = d; nearest = t; }
+      });
+      if (nearest) {
+        const toTarget = nearest.position.clone()
+          .sub(character.position).setY(0).normalize();
+        aimDir = aimDir.clone().lerp(toTarget, 0.75).normalize();
+      }
+
       const spawnPos = character.position.clone()
-        .add(direction.clone().multiplyScalar(0.8))
+        .add(aimDir.clone().multiplyScalar(0.8))
         .setY(0.5);
 
       this.projectiles.spawn({
         position:  spawnPos,
-        direction,
+        direction: aimDir,
         speed:     cfg.speed,
         damage:    weapon.damage,
         owner:     character,
         lifetime:  cfg.lifetime,
         radius:    cfg.radius,
         color:     cfg.color,
-        style:     cfg.style,  // 'shell' | 'bubble' — drives mesh appearance
+        style:     cfg.style,
       });
       weapon.fire();
       return true;
@@ -358,6 +373,92 @@ class Game {
     return false;
   }
 
+  // ── Ability activation ───────────────────────────────────────────────────────
+
+  /**
+   * Try to use the character's active ability.
+   * Falls back to cycling the weapon slot if no ability is available.
+   */
+  _useAbility(character) {
+    const ab = character.abilities;
+    if (ab.hasNovaBlast) {
+      ab.startNovaCharge();
+      return;
+    }
+    if (ab.hasEinbuddeln) {
+      const buried = ab.toggleBury();
+      // Sync immediately
+      character.isBuried = character.abilities.isBuried;
+      return;
+    }
+    // No ability — fall back to weapon switch
+    character.weaponSlots.nextSlot();
+  }
+
+  // ── Nova-Blast detonation ────────────────────────────────────────────────────
+
+  _triggerNovaBlast(character) {
+    const pos         = character.position.clone();
+    const def         = ABILITY_DEFS.novaBlast;
+    const allChars    = [this.player1, this.player2, this.player3].filter(Boolean);
+
+    allChars.forEach(target => {
+      if (target === character || !target.isAlive) return;
+      const dx   = target.position.x - pos.x;
+      const dz   = target.position.z - pos.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist >= def.blastRadius) return;
+
+      // Never kills — leaves target at minimum 1 HP
+      const actualDmg = Math.max(0, target.health - 1);
+      if (actualDmg > 0) target.takeDamage(actualDmg);
+
+      // Eject buried targets
+      if (target.abilities.isBuried) {
+        target.abilities.ejectFromGround();
+        target.isBuried = false;
+      }
+
+      // Knockback impulse
+      const nx = dist > 0.1 ? dx / dist : (Math.random() - 0.5);
+      const nz = dist > 0.1 ? dz / dist : (Math.random() - 0.5);
+      target.velocity.x += nx * def.knockback;
+      target.velocity.z += nz * def.knockback;
+      target.velocity.y  = Math.max(target.velocity.y, 8);
+      target.isOnGround  = false;
+
+      this.hud.showHit(character.name, actualDmg);
+    });
+
+    this._spawnNovaVFX(pos, def.blastRadius);
+  }
+
+  _spawnNovaVFX(pos, maxRadius) {
+    const mat = new THREE.MeshBasicMaterial({
+      color:       0xff8800,
+      transparent: true,
+      opacity:     0.60,
+      side:        THREE.BackSide,
+    });
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), mat);
+    sphere.position.copy(pos);
+    sphere.position.y = Math.max(0.5, pos.y + 0.5);
+    this.world.scene.add(sphere);
+    this._novaEffects.push({ mesh: sphere, mat, timer: 0, duration: 0.55, maxRadius });
+
+    // Also spawn a bright inner flash (smaller, faster)
+    const flashMat = new THREE.MeshBasicMaterial({
+      color:       0xffffaa,
+      transparent: true,
+      opacity:     0.80,
+      side:        THREE.BackSide,
+    });
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), flashMat);
+    flash.position.copy(sphere.position);
+    this.world.scene.add(flash);
+    this._novaEffects.push({ mesh: flash, mat: flashMat, timer: 0, duration: 0.22, maxRadius: maxRadius * 0.45 });
+  }
+
   // ── Jump-hit handler ────────────────────────────────────────────────────────
 
   _handleJumpHit(hit) {
@@ -365,6 +466,18 @@ class Game {
     const dropped = hit.target.weaponSlots.dropAll();
     if (dropped.length > 0) {
       this.pickups.spawnDropped(hit.target.position, dropped);
+    }
+  }
+
+  // ── Pickup message helper ────────────────────────────────────────────────────
+
+  _showPickupMsg(charName, itemName) {
+    const el = document.getElementById('hit-flash');
+    if (el) {
+      el.textContent = `${charName} sammelt: ${itemName}!`;
+      el.classList.add('visible');
+      clearTimeout(this._pickupMsgTimeout);
+      this._pickupMsgTimeout = setTimeout(() => el.classList.remove('visible'), 1800);
     }
   }
 
@@ -377,7 +490,13 @@ class Game {
       if (!char || !char.isAlive) return;
       const nearest = this.pickups.getNearestPickup(char.position);
       if (nearest && nearest.dist <= HINT_RANGE) {
-        this.hud.setPickupHint(i, nearest.pickup.weapon ? nearest.pickup.weapon.name : '');
+        const pickup = nearest.pickup;
+        const name = pickup.weapon
+          ? pickup.weapon.name
+          : (pickup.abilityKey && ABILITY_DEFS[pickup.abilityKey]
+              ? ABILITY_DEFS[pickup.abilityKey].name
+              : '');
+        this.hud.setPickupHint(i, name);
       }
     });
   }
@@ -397,13 +516,20 @@ class Game {
       (m1.down  ? 1 : 0) - (m1.up   ? 1 : 0) + tdz
     );
     if (this.input.wasJustPressed(PLAYER1_KEYS.jump) || this.touch.wasJumpPressed()) {
-      this.player1.jump();
+      if (this.player1.isBuried) {
+        // Jump exits buried state
+        this.player1.abilities.ejectFromGround();
+        this.player1.isBuried = false;
+      } else {
+        this.player1.jump();
+      }
     }
     if (this.input.wasAttackPressed(PLAYER1_KEYS) || this.touch.wasAttackPressed()) {
       this._fireActiveWeapon(this.player1);
     }
+    // Ability button (x / touch switch): try active ability, fall back to weapon cycle
     if (this.input.wasSwitchPressed(PLAYER1_KEYS) || this.touch.wasSwitchPressed()) {
-      this.player1.weaponSlots.nextSlot();
+      this._useAbility(this.player1);
     }
 
     // Player 2 — only in local-versus mode
@@ -414,13 +540,18 @@ class Game {
         (m2.down  ? 1 : 0) - (m2.up   ? 1 : 0)
       );
       if (this.input.wasJustPressed(PLAYER2_KEYS.jump)) {
-        this.player2.jump();
+        if (this.player2.isBuried) {
+          this.player2.abilities.ejectFromGround();
+          this.player2.isBuried = false;
+        } else {
+          this.player2.jump();
+        }
       }
       if (this.input.wasAttackPressed(PLAYER2_KEYS)) {
         this._fireActiveWeapon(this.player2);
       }
       if (this.input.wasSwitchPressed(PLAYER2_KEYS)) {
-        this.player2.weaponSlots.nextSlot();
+        this._useAbility(this.player2);
       }
     }
   }
@@ -489,23 +620,48 @@ class Game {
     if (this.player2 && this.player2.isAlive) this.obstacles.checkCharacterCollision(this.player2);
     if (this.player3 && this.player3.isAlive) this.obstacles.checkCharacterCollision(this.player3);
 
-    // Stachel-Aura: deal contact damage every cooldown tick
+    // ── Ability updates ──────────────────────────────────────────────────────
     const allChars = [this.player1, this.player2, this.player3].filter(Boolean);
     allChars.forEach(attacker => {
       if (!attacker.isAlive) return;
-      const w = attacker.weaponSlots.getActive();
-      if (!w || w.type !== 'aura' || !w.isReady) return;
-      allChars.forEach(target => {
-        if (target === attacker || !target.isAlive) return;
-        const dx = target.position.x - attacker.position.x;
-        const dz = target.position.z - attacker.position.z;
-        if (Math.sqrt(dx * dx + dz * dz) < 2.0) {
-          target.takeDamage(w.damage);
-          this.hud.showHit(attacker.name, w.damage);
-          w.fire(); // start cooldown so it doesn't fire every frame
-        }
-      });
+      const abilityEvent = attacker.abilities.update(dt);
+
+      if (abilityEvent === 'aura_tick') {
+        // Stachel-Aura contact damage
+        const auraRadius = ABILITY_DEFS.stachelAura.auraRadius;
+        const damage     = ABILITY_DEFS.stachelAura.damage;
+        allChars.forEach(target => {
+          if (target === attacker || !target.isAlive) return;
+          const dx = target.position.x - attacker.position.x;
+          const dz = target.position.z - attacker.position.z;
+          if (Math.sqrt(dx * dx + dz * dz) < auraRadius) {
+            target.takeDamage(damage);
+            this.hud.showHit(attacker.name, damage);
+          }
+        });
+      }
+
+      if (abilityEvent === 'nova_fire') {
+        this._triggerNovaBlast(attacker);
+      }
+
+      // Sync buried state (ability manager is source of truth)
+      attacker.isBuried = attacker.abilities.isBuried;
     });
+
+    // ── Nova VFX update ─────────────────────────────────────────────────────
+    if (this._novaEffects.length > 0) {
+      const alive = [];
+      for (const eff of this._novaEffects) {
+        eff.timer += dt;
+        const p = Math.min(1, eff.timer / eff.duration);
+        eff.mesh.scale.setScalar(p * eff.maxRadius);
+        eff.mat.opacity = 0.60 * (1 - p);
+        if (p < 1) alive.push(eff);
+        else       this.world.scene.remove(eff.mesh);
+      }
+      this._novaEffects = alive;
+    }
 
     // Jump-attack combat
     const jumpHits = this.combat.processCombat(
@@ -530,21 +686,21 @@ class Game {
 
     // Pickup collection
     const collectionEvents = this.pickups.update(dt, chars);
-    collectionEvents.forEach(({ character, weapon }) => {
-      const slot = character.weaponSlots.firstEmptySlot();
-      if (slot !== -1) {
-        character.weaponSlots.equip(slot, this._cloneWeapon(weapon));
-      } else {
-        // Replace active slot
-        character.weaponSlots.equip(character.weaponSlots.activeIndex, this._cloneWeapon(weapon));
-      }
-      this.hud.showHit(character.name, 0); // use showHit for feedback — repurposed
-      const el = document.getElementById('hit-flash');
-      if (el) {
-        el.textContent = `${character.name} sammelt: ${weapon.name}!`;
-        el.classList.add('visible');
-        clearTimeout(this._pickupMsgTimeout);
-        this._pickupMsgTimeout = setTimeout(() => el.classList.remove('visible'), 1500);
+    collectionEvents.forEach(({ character, weapon, abilityKey }) => {
+      if (weapon) {
+        const slot = character.weaponSlots.firstEmptySlot();
+        if (slot !== -1) {
+          character.weaponSlots.equip(slot, this._cloneWeapon(weapon));
+        } else {
+          character.weaponSlots.equip(character.weaponSlots.activeIndex, this._cloneWeapon(weapon));
+        }
+        this._showPickupMsg(character.name, weapon.name);
+      } else if (abilityKey) {
+        const def = ABILITY_DEFS[abilityKey];
+        if (abilityKey === 'stachelAura')  character.abilities.grantStachelAura();
+        else if (abilityKey === 'novaBlast')   character.abilities.grantNovaBlast();
+        else if (abilityKey === 'einbuddeln')  character.abilities.grantEinbuddeln();
+        this._showPickupMsg(character.name, def ? def.name : abilityKey);
       }
     });
 
@@ -596,6 +752,9 @@ class Game {
     if (this.player1 && this.player2) {
       this.hud.update(this.player1, this.player2);
     }
+    // Ability status bars in HUD
+    if (this.player1) this.hud.updateAbilities('p1', this.player1.abilities);
+    if (this.player2) this.hud.updateAbilities('p2', this.player2.abilities);
     this.hud.updateScore(this.state.score);
 
     // Debug

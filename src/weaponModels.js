@@ -117,6 +117,62 @@ export function buildSpikeOrbitMesh() {
   return g;
 }
 
+// ── Nova-Explosion pickup ───────────────────────────────────────────────────────
+export function buildNovaBlastPickupMesh() {
+  const g   = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color: 0xff6600, emissive: 0xcc2200, emissiveIntensity: 0.7 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.30, side: THREE.BackSide });
+
+  // Central core — glowing sphere
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat);
+  g.add(core);
+
+  // 8 explosion spikes radiating outward
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const spike = new THREE.Mesh(
+      new THREE.ConeGeometry(0.07, 0.38, 5),
+      mat
+    );
+    spike.position.set(Math.cos(angle) * 0.38, Math.sin(angle) * 0.38, 0);
+    spike.rotation.z = angle - Math.PI / 2;
+    g.add(spike);
+  }
+
+  // Outer glow
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), glowMat);
+  g.add(glow);
+
+  return g;
+}
+
+// ── Sand-Tarnung pickup ─────────────────────────────────────────────────────────
+export function buildSandStealthPickupMesh() {
+  const g      = new THREE.Group();
+  const sandMat = new THREE.MeshLambertMaterial({ color: 0xc8a045, emissive: 0x6b4400, emissiveIntensity: 0.35 });
+  const darkMat = new THREE.MeshLambertMaterial({ color: 0x8b6020, emissive: 0x3a2000, emissiveIntensity: 0.25 });
+
+  // Sandy mound (flattened half-sphere)
+  const mound = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), sandMat);
+  mound.scale.y = 0.5;
+  g.add(mound);
+
+  // Buried outline of starfish arm (just a hint)
+  const hint = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 5, 12), darkMat);
+  hint.rotation.x = Math.PI / 2;
+  hint.position.y = 0.02;
+  g.add(hint);
+
+  // Downward arrow indicator
+  const arrowMat = new THREE.MeshBasicMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.85 });
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 6), arrowMat);
+  arrow.position.y = 0.42;
+  arrow.rotation.x = Math.PI; // pointing down
+  g.add(arrow);
+
+  return g;
+}
+
 // ── Pickup marker ──────────────────────────────────────────────────────────────
 export function buildPickupMarkerMesh(weaponKey) {
   const g = new THREE.Group();
@@ -124,9 +180,11 @@ export function buildPickupMarkerMesh(weaponKey) {
   // Choose model by weapon key
   let model;
   switch (weaponKey) {
-    case 'muschelShooter': model = buildShellGunMesh();     break;
-    case 'blasenkanone':   model = buildBubbleCannonMesh(); break;
-    case 'stachelAura':    model = buildSpikeOrbitMesh();   break;
+    case 'muschelShooter': model = buildShellGunMesh();        break;
+    case 'blasenkanone':   model = buildBubbleCannonMesh();    break;
+    case 'stachelAura':    model = buildSpikeOrbitMesh();      break;
+    case 'novaBlast':      model = buildNovaBlastPickupMesh(); break;
+    case 'einbuddeln':     model = buildSandStealthPickupMesh(); break;
     default:               model = buildShellGunMesh();
   }
 
