@@ -6,6 +6,7 @@
 export const GameMode = {
   VS_AI:        'vs-ai',
   VS_TWO_AI:    'vs-two-ai',
+  VS_MULTI_AI:  'vs-multi-ai',   // player vs 4 AI enemies simultaneously
   LOCAL_VERSUS: 'local-versus',
 };
 
@@ -49,6 +50,11 @@ export class GameState {
   nextLevel() {
     this.currentLevelIndex = (this.currentLevelIndex + 1) % 3;
     return this.currentLevelIndex;
+  }
+
+  /** True when in a mode that uses simultaneous multiple AI enemies. */
+  get isMultiAI() {
+    return this.mode === GameMode.VS_MULTI_AI;
   }
 
   setLevel(index) {

@@ -7,7 +7,7 @@
 
 import * as THREE from 'three';
 
-export const WORLD_SIZE = 38; // full playable diameter
+export const WORLD_SIZE = 55; // full playable diameter (enlarged in v0.8)
 export const WORLD_HALF = WORLD_SIZE / 2;
 
 // Detect mobile for performance tuning
@@ -83,8 +83,8 @@ export class World {
     this._sunLight.shadow.mapSize.setScalar(IS_MOBILE ? 512 : 1024);
     this._sunLight.shadow.camera.near   = 1;
     this._sunLight.shadow.camera.far    = 70;
-    this._sunLight.shadow.camera.left   = this._sunLight.shadow.camera.bottom = -22;
-    this._sunLight.shadow.camera.right  = this._sunLight.shadow.camera.top    =  22;
+    this._sunLight.shadow.camera.left   = this._sunLight.shadow.camera.bottom = -35;
+    this._sunLight.shadow.camera.right  = this._sunLight.shadow.camera.top    =  35;
     this.scene.add(this._sunLight);
 
     // Secondary fill light from below — simulates caustic bounce
@@ -395,10 +395,10 @@ export class World {
   // ── Per-frame ──────────────────────────────────────────────────────────────
 
   /**
-   * Smoothly moves camera to frame both characters.
-   * @param {THREE.Vector3} p1
-   * @param {THREE.Vector3} p2
-   * @param {number} dt
+   * Smoothly moves camera to frame two reference positions.
+   * @param {THREE.Vector3} p1    — player position
+   * @param {THREE.Vector3} p2    — second reference (nearest enemy)
+   * @param {number}        dt
    */
   updateCamera(p1, p2, dt) {
     const mid = new THREE.Vector3(
@@ -407,8 +407,8 @@ export class World {
       (p1.z + p2.z) / 2
     );
 
-    const dist      = p1.distanceTo(p2);
-    const camDist   = Math.max(14, dist * 1.4 + 4);
+    const dist    = p1.distanceTo(p2);
+    const camDist = Math.max(18, Math.min(42, dist * 1.4 + 6)); // wider range for big map
     const targetPos = new THREE.Vector3(
       mid.x,
       camDist * 0.88,

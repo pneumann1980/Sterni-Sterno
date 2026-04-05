@@ -31,6 +31,8 @@ import { PickupManager }      from './pickup.js';
 import { ObstacleSystem }     from './obstacles.js';
 import { LEVELS }             from './level.js';
 import { TouchInput }         from './touch.js';
+import { TrophyManager, SKIN_DEFS } from './trophies.js';
+import { MatchmakingClient, MatchState } from './matchmaking.js';
 
 // Projectile configuration keyed by weapon.key
 const PROJECTILE_CONFIG = {
@@ -53,25 +55,29 @@ const PROJECTILE_CONFIG = {
 // ── Main Game class ───────────────────────────────────────────────────────────
 class Game {
   constructor() {
-    this.world      = new World();
-    this.input      = new InputManager();
-    this.touch      = new TouchInput();
-    this.combat     = new CombatSystem();
-    this.state      = new GameState();
-    this.hud        = new HUD(document.getElementById('hud'));
-    this.obstacles  = new ObstacleSystem();
-    this.pickups    = new PickupManager(this.world.scene);
+    this.world       = new World();
+    this.input       = new InputManager();
+    this.touch       = new TouchInput();
+    this.combat      = new CombatSystem();
+    this.state       = new GameState();
+    this.hud         = new HUD(document.getElementById('hud'));
+    this.obstacles   = new ObstacleSystem();
+    this.pickups     = new PickupManager(this.world.scene);
     this.projectiles = new ProjectileManager(this.world.scene);
+    this.trophies    = new TrophyManager();
+    this.matchmaking = null; // created on demand
 
+    // Characters: player1 = human, player2-5 = AI (depending on mode)
     this.player1  = null;
     this.player2  = null;
     this.player3  = null;
-    this.ai       = null;
-    this.ai2      = null;
+    this.player4  = null;
+    this.player5  = null;
+    this.aiList   = []; // all active AIController instances
     this.lastTime = 0;
 
     this._selectedLevel = 0;
-    this._novaEffects   = [];  // active nova explosion VFX
+    this._novaEffects   = [];
 
     this._bindMenuButtons();
     this._bindGameButtons();
@@ -116,6 +122,18 @@ class Game {
     document.getElementById('btn-vs-two-ai').onclick = () =>
       this._startGame(GameMode.VS_TWO_AI, this._selectedLevel);
 
+    const multiBtn = document.getElementById('btn-vs-multi-ai');
+    if (multiBtn) multiBtn.onclick = () =>
+      this._startGame(GameMode.VS_MULTI_AI, this._selectedLevel);
+
+    // Quick-match (matchmaking)
+    const mmBtn = document.getElementById('btn-quickmatch');
+    if (mmBtn) mmBtn.onclick = () => this._startMatchmaking();
+
+    // Skins button (in menu area)
+    const skinsMenuBtn = document.getElementById('btn-skins-menu');
+    if (skinsMenuBtn) skinsMenuBtn.onclick = () => this._openSkinsModal();
+
     // Difficulty selector
     document.querySelectorAll('.diff-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -131,6 +149,17 @@ class Game {
     document.getElementById('btn-menu').onclick     = () => this._goToMenu();
     document.getElementById('btn-resume').onclick   = () => this._resume();
     document.getElementById('btn-pause-menu').onclick = () => this._goToMenu();
+
+    // HUD skins button (top-right during game)
+    const hudSkinsBtn = document.getElementById('btn-hud-skins');
+    if (hudSkinsBtn) hudSkinsBtn.onclick = () => {
+      if (this.state.isPlaying) this._pause();
+      this._openSkinsModal();
+    };
+
+    // Skins modal close
+    const closeSkinsBtn = document.getElementById('btn-close-skins');
+    if (closeSkinsBtn) closeSkinsBtn.onclick = () => this._closeSkinsModal();
 
     // "Next Level" button — injected dynamically
     const nextBtn = document.getElementById('btn-next-level');
@@ -156,60 +185,182 @@ class Game {
     });
   }
 
+  // ── Matchmaking ──────────────────────────────────────────────────────────────
+
+  _startMatchmaking() {
+    // Show searching overlay
+    const overlay = document.getElementById('matchmaking-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    this._showScreen('none'); // hide menu
+
+    if (this.matchmaking) this.matchmaking.cancel();
+    this.matchmaking = new MatchmakingClient(
+      (isOnline) => {
+        if (overlay) overlay.style.display = 'none';
+        if (isOnline) {
+          // Real player found — for now, treat as LOCAL_VERSUS
+          this._showScreen('menu');
+          this._showPickupMsg('System', 'Online-Spiel noch nicht verfügbar — KI-Match gestartet');
+          this._startGame(GameMode.VS_MULTI_AI, this._selectedLevel);
+        } else {
+          // AI fallback
+          this._startGame(GameMode.VS_MULTI_AI, this._selectedLevel);
+        }
+      },
+      (matchState) => {
+        const statusEl = document.getElementById('mm-status');
+        if (!statusEl) return;
+        const labels = {
+          [MatchState.SEARCHING]: 'Suche Mitspieler...',
+          [MatchState.MATCHED]:   'Spieler gefunden!',
+          [MatchState.FALLBACK]:  'Kein Spieler — starte KI-Match...',
+          [MatchState.CANCELLED]: 'Abgebrochen',
+        };
+        statusEl.textContent = labels[matchState] || '';
+      }
+    );
+    this.matchmaking.search();
+
+    // Cancel button
+    const cancelBtn = document.getElementById('btn-mm-cancel');
+    if (cancelBtn) cancelBtn.onclick = () => {
+      this.matchmaking?.cancel();
+      if (overlay) overlay.style.display = 'none';
+      this._showScreen('menu');
+    };
+  }
+
+  // ── Skins modal ───────────────────────────────────────────────────────────────
+
+  _openSkinsModal() {
+    this._renderSkinsModal();
+    document.getElementById('skins-modal').style.display = 'flex';
+  }
+
+  _closeSkinsModal() {
+    document.getElementById('skins-modal').style.display = 'none';
+  }
+
+  _renderSkinsModal() {
+    const list = document.getElementById('skins-list');
+    if (!list) return;
+    const skins = this.trophies.getAllSkinsWithStatus();
+
+    list.innerHTML = skins.map(skin => {
+      const locked    = !skin.unlocked;
+      const activeTag = skin.active ? ' (Aktiv)' : '';
+      const lockTag   = locked
+        ? `<span class="skin-lock">🔒 ${skin.requiredTrophies} 🏆 benötigt</span>`
+        : '';
+      const swatchColor = skin.color ? `#${skin.color.toString(16).padStart(6, '0')}` : '#2255ff';
+      return `
+        <div class="skin-card${skin.active ? ' skin-active' : ''}${locked ? ' skin-locked' : ''}"
+             data-key="${skin.key}">
+          <div class="skin-swatch" style="background:${swatchColor}">
+            ${skin.glitter ? '<div class="skin-glitter">✦</div>' : ''}
+          </div>
+          <div class="skin-info">
+            <div class="skin-name">${skin.name}${activeTag}</div>
+            <div class="skin-desc">${skin.description}</div>
+            ${lockTag}
+          </div>
+          ${locked ? '' : `<button class="btn skin-equip-btn${skin.active ? ' skin-active-btn' : ''}"
+            data-key="${skin.key}">${skin.active ? 'Ausgerüstet' : 'Ausrüsten'}</button>`}
+        </div>
+      `;
+    }).join('');
+
+    // Bind equip buttons
+    list.querySelectorAll('.skin-equip-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.key;
+        if (this.trophies.setSkin(key)) {
+          // Apply to player1 immediately if in game
+          if (this.player1) this._applySkinToCharacter(this.player1);
+          this._renderSkinsModal(); // re-render to update active state
+        }
+      });
+    });
+  }
+
+  _applySkinToCharacter(character) {
+    const def = this.trophies.getActiveSkinDef();
+    character.applySkinColor(def.color, def.glitter);
+  }
+
+  _showUnlockNotification(skinKey) {
+    const def = SKIN_DEFS[skinKey];
+    if (!def) return;
+    const el = document.getElementById('unlock-toast');
+    if (!el) return;
+    el.textContent = `🎉 Neuer Skin freigeschaltet: ${def.name}!`;
+    el.style.display = 'block';
+    clearTimeout(this._unlockTimeout);
+    this._unlockTimeout = setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
   // ── Game flow ───────────────────────────────────────────────────────────────
 
   _startGame(mode, levelIndex = 0) {
     this._cleanupCharacters();
     this.state.start(mode, levelIndex);
 
-    const levelDef = LEVELS[levelIndex] || LEVELS[0];
+    const levelDef   = LEVELS[levelIndex] || LEVELS[0];
+    const spawns     = levelDef.spawnPositions || [];
+    const diff       = this.state.difficulty;
+    const isMultiAI  = mode === GameMode.VS_MULTI_AI;
 
-    // Player 1 — blue starfish
+    // ── Player 1 — human (color may be overridden by skin) ──────────────────
     this.player1 = new Character({
       name:     'Spieler 1',
       color:    0x2255ff,
-      position: [...(levelDef.spawnPositions[0] || [-8, 0, 0])],
+      position: [...(spawns[0] || [-12, 0, 0])],
     });
     this._equipDefault(this.player1);
+    this._applySkinToCharacter(this.player1);  // apply active skin
     this.world.scene.add(this.player1.mesh);
 
-    // Player 2 / Enemy — orange starfish
-    const p2Name = mode === GameMode.VS_TWO_AI ? 'KI-Gegner 1'
-                 : mode === GameMode.VS_AI      ? 'KI-Gegner'
-                 : 'Spieler 2';
-    this.player2 = new Character({
-      name:     p2Name,
-      color:    0xff5500,
-      position: [...(levelDef.spawnPositions[1] || [8, 0, 0])],
-    });
-    this._equipDefault(this.player2);
-    this.world.scene.add(this.player2.mesh);
+    // ── AI enemy colors ─────────────────────────────────────────────────────
+    const AI_COLORS  = [0xff5500, 0x22cc44, 0xff22aa, 0xffcc00];
+    const AI_NAMES   = ['KI 1', 'KI 2', 'KI 3', 'KI 4'];
+    const numAI      = isMultiAI ? 4
+                     : mode === GameMode.VS_TWO_AI ? 2
+                     : mode === GameMode.VS_AI ? 1
+                     : 1; // LOCAL_VERSUS → still need p2 slot
 
-    // Player 3 / second enemy — green starfish (VS_TWO_AI only)
-    if (mode === GameMode.VS_TWO_AI) {
-      this.player3 = new Character({
-        name:     'KI-Gegner 2',
-        color:    0x22cc44,
-        position: [...(levelDef.spawnPositions[2] || [0, 0, -8])],
+    const aiChars   = [];
+    const aiRefs    = ['player2', 'player3', 'player4', 'player5'];
+
+    for (let i = 0; i < numAI; i++) {
+      const isHuman = mode === GameMode.LOCAL_VERSUS && i === 0;
+      const name    = isHuman ? 'Spieler 2'
+                    : mode === GameMode.VS_AI && i === 0 ? 'KI-Gegner'
+                    : mode === GameMode.VS_TWO_AI ? `KI-Gegner ${i + 1}`
+                    : AI_NAMES[i];
+      const char = new Character({
+        name,
+        color:    AI_COLORS[i],
+        position: [...(spawns[i + 1] || [12, 0, 0])],
       });
-      this._equipDefault(this.player3);
-      this.world.scene.add(this.player3.mesh);
+      this._equipDefault(char);
+      this.world.scene.add(char.mesh);
+      this[aiRefs[i]] = char;
+      aiChars.push(char);
     }
 
-    // AI wiring — pass selected difficulty
-    const diff = this.state.difficulty;
-    this.ai = (mode === GameMode.VS_AI || mode === GameMode.VS_TWO_AI)
-      ? new AIController(this.player2, this.player1, diff)
-      : null;
-    this.ai2 = mode === GameMode.VS_TWO_AI && this.player3
-      ? new AIController(this.player3, this.player1, diff)
-      : null;
+    // ── AI controllers ───────────────────────────────────────────────────────
+    this.aiList = [];
+    const aiStart = mode === GameMode.LOCAL_VERSUS ? 1 : 0;
+    for (let i = aiStart; i < aiChars.length; i++) {
+      this.aiList.push(new AIController(aiChars[i], this.player1, diff));
+    }
 
-    // Load level (builds obstacles, decorations, pickups)
+    // Load level
     this.projectiles.clear();
     this.world.loadLevel(levelDef, this.obstacles, this.pickups, WEAPONS);
 
-    this.hud.init(this.player1, this.player2, mode, levelDef.name);
+    this.hud.init(this.player1, this.player2, mode, levelDef.name,
+                  this.trophies.trophies);
 
     this._showScreen('none');
     document.getElementById('hud').style.display = 'flex';
@@ -235,13 +386,14 @@ class Game {
   }
 
   _cleanupCharacters() {
-    if (this.player1) { this.world.scene.remove(this.player1.mesh); this.player1 = null; }
-    if (this.player2) { this.world.scene.remove(this.player2.mesh); this.player2 = null; }
-    if (this.player3) { this.world.scene.remove(this.player3.mesh); this.player3 = null; }
-    this.ai  = null;
-    this.ai2 = null;
+    for (const slot of ['player1', 'player2', 'player3', 'player4', 'player5']) {
+      if (this[slot]) {
+        this.world.scene.remove(this[slot].mesh);
+        this[slot] = null;
+      }
+    }
+    this.aiList = [];
     this.projectiles.clear();
-    // Clean up any live nova VFX
     for (const eff of this._novaEffects) this.world.scene.remove(eff.mesh);
     this._novaEffects = [];
   }
@@ -276,16 +428,28 @@ class Game {
     document.getElementById('hud').style.display = 'none';
     this.touch.hide();
 
-    const isWin = winnerName === this.player1.name;
-    if (isWin) this.state.addWin(); else this.state.addLoss();
-    document.getElementById('winner-text').textContent = isWin ? 'VICTORY! 🏆' : 'DEFEAT 💀';
+    const isWin = winnerName === this.player1?.name;
+    if (isWin) {
+      this.state.addWin();
+      this.trophies.addWin();
+    } else {
+      this.state.addLoss();
+      this.trophies.addLoss();
+    }
+
+    // Check for newly unlocked skin
+    const newSkin = this.trophies.checkNewUnlock();
+    if (newSkin) setTimeout(() => this._showUnlockNotification(newSkin), 800);
+
+    document.getElementById('winner-text').textContent = isWin ? 'SIEG! 🏆' : 'NIEDERLAGE 💀';
     document.getElementById('winner-text').style.color = isWin ? '#ffdd00' : '#ff4444';
     const deltaEl = document.getElementById('score-delta');
     if (deltaEl) {
-      deltaEl.textContent = isWin ? '+10 Punkte' : '-5 Punkte';
+      deltaEl.textContent = isWin ? '+10 🏆 Trophäen' : '−5 🏆 Trophäen';
       deltaEl.style.color = isWin ? '#88ff88' : '#ff6666';
     }
     this.hud.updateScore(this.state.score);
+    this.hud.updateTrophies(this.trophies.trophies);
 
     // Show / update next-level button
     let nextBtn = document.getElementById('btn-next-level');
@@ -327,7 +491,7 @@ class Game {
       if (!cfg) return false;
 
       // ── Auto-aim: blend toward nearest visible enemy within 12 units ──────
-      const allPlayers = [this.player1, this.player2, this.player3];
+      const allPlayers = [this.player1, this.player2, this.player3, this.player4, this.player5];
       const enemies = allPlayers.filter(c => c && c.isAlive && c !== character && !c.isBuried);
       let aimDir = character.getForwardDirection();
       let nearest = null, nearestDist = 12;
@@ -400,7 +564,7 @@ class Game {
   _triggerNovaBlast(character) {
     const pos         = character.position.clone();
     const def         = ABILITY_DEFS.novaBlast;
-    const allChars    = [this.player1, this.player2, this.player3].filter(Boolean);
+    const allChars    = [this.player1, this.player2, this.player3, this.player4, this.player5].filter(Boolean);
 
     allChars.forEach(target => {
       if (target === character || !target.isAlive) return;
@@ -486,7 +650,7 @@ class Game {
   _updatePickupHints() {
     const HINT_RANGE = 2.5;
 
-    [this.player1, this.player2, this.player3].forEach((char, i) => {
+    [this.player1, this.player2].forEach((char, i) => {
       if (!char || !char.isAlive) return;
       const nearest = this.pickups.getNearestPickup(char.position);
       if (nearest && nearest.dist <= HINT_RANGE) {
@@ -586,42 +750,29 @@ class Game {
     // Input
     this._processInput();
 
-    // AI
-    if (this.ai && this.player2 && this.player2.isAlive) {
-      const aiActions = this.ai.update(dt, this.pickups);
-      if (aiActions.wantsAttack) {
-        this._fireActiveWeapon(this.player2);
-      }
+    // AI controllers
+    const allPlayers = [this.player1, this.player2, this.player3, this.player4, this.player5]
+      .filter(Boolean);
+    this.aiList.forEach(ai => {
+      const ch = ai.character;
+      if (!ch || !ch.isAlive) return;
+      const aiActions = ai.update(dt, this.pickups);
+      if (aiActions.wantsAttack) this._fireActiveWeapon(ch);
       if (aiActions.wantsMelee) {
-        const meleeTargets = [this.player1, this.player3].filter(Boolean);
-        this.combat.processMeleeAttack(this.player2, meleeTargets)
-          .forEach(h => this.hud.showHit(this.player2.name, h.damage));
+        const targets = allPlayers.filter(c => c !== ch);
+        this.combat.processMeleeAttack(ch, targets)
+          .forEach(h => this.hud.showHit(ch.name, h.damage));
       }
-    }
-    if (this.ai2 && this.player3 && this.player3.isAlive) {
-      const ai2Actions = this.ai2.update(dt, this.pickups);
-      if (ai2Actions.wantsAttack) {
-        this._fireActiveWeapon(this.player3);
-      }
-      if (ai2Actions.wantsMelee) {
-        const meleeTargets = [this.player1, this.player2].filter(Boolean);
-        this.combat.processMeleeAttack(this.player3, meleeTargets)
-          .forEach(h => this.hud.showHit(this.player3.name, h.damage));
-      }
-    }
+    });
 
-    // Physics
-    if (this.player1) this.player1.update(dt);
-    if (this.player2) this.player2.update(dt);
-    if (this.player3) this.player3.update(dt);
-
-    // Obstacle collision
-    if (this.player1 && this.player1.isAlive) this.obstacles.checkCharacterCollision(this.player1);
-    if (this.player2 && this.player2.isAlive) this.obstacles.checkCharacterCollision(this.player2);
-    if (this.player3 && this.player3.isAlive) this.obstacles.checkCharacterCollision(this.player3);
+    // Physics + obstacle collision for all characters
+    allPlayers.forEach(c => {
+      c.update(dt);
+      if (c.isAlive) this.obstacles.checkCharacterCollision(c);
+    });
 
     // ── Ability updates ──────────────────────────────────────────────────────
-    const allChars = [this.player1, this.player2, this.player3].filter(Boolean);
+    const allChars = allPlayers; // already filtered above
     allChars.forEach(attacker => {
       if (!attacker.isAlive) return;
       const abilityEvent = attacker.abilities.update(dt);
@@ -664,16 +815,14 @@ class Game {
     }
 
     // Jump-attack combat
-    const jumpHits = this.combat.processCombat(
-      [this.player1, this.player2, this.player3].filter(Boolean)
-    );
+    const jumpHits = this.combat.processCombat(allPlayers);
     jumpHits.forEach(h => {
       this.hud.showHit(h.attacker.name, h.damage);
       this._handleJumpHit(h);
     });
 
     // Projectile combat
-    const chars      = [this.player1, this.player2, this.player3].filter(Boolean);
+    const chars      = allPlayers;
     const obsData    = this.obstacles.getObstacleData();
     const projHits   = this.projectiles.update(dt, chars, obsData);
     projHits.forEach(h => {
@@ -707,55 +856,50 @@ class Game {
     // Pickup hints in HUD
     this._updatePickupHints();
 
-    // Win condition
-    if (this.player1 && this.player2) {
+    // ── Win condition ────────────────────────────────────────────────────────
+    if (this.player1) {
       if (!this.player1.isAlive) {
-        // Player 1 is down — enemies win
-        this._endGame(this.player2.isAlive ? this.player2.name : (this.player3 ? this.player3.name : this.player2.name));
+        // Player 1 is down — find first living enemy as winner name
+        const liveEnemy = allPlayers.find(c => c !== this.player1 && c.isAlive);
+        this._endGame(liveEnemy ? liveEnemy.name : 'KI');
         return;
       }
-      if (this.state.mode === GameMode.VS_TWO_AI) {
-        // Player 1 wins only when both enemies are defeated
-        const p2Dead = !this.player2.isAlive;
-        const p3Dead = !this.player3 || !this.player3.isAlive;
-        if (p2Dead && p3Dead) {
-          this._endGame(this.player1.name);
-          return;
-        }
-      } else {
-        if (!this.player2.isAlive) {
-          this._endGame(this.player1.name);
-          return;
-        }
+      // Player 1 wins when ALL other characters are dead
+      const enemies = allPlayers.filter(c => c !== this.player1);
+      if (enemies.length > 0 && enemies.every(c => !c.isAlive)) {
+        this._endGame(this.player1.name);
+        return;
       }
     }
 
     // Sync weapon display on characters
-    const syncWeapon = (char) => {
-      if (!char || !char.isAlive) return;
+    allPlayers.forEach(char => {
+      if (!char.isAlive) return;
       const active = char.weaponSlots.getActive();
       if (char._lastSyncedWeapon !== active) {
         char.showWeaponModel(active);
         char._lastSyncedWeapon = active;
       }
-    };
-    syncWeapon(this.player1);
-    syncWeapon(this.player2);
-    syncWeapon(this.player3);
+    });
 
-    // Camera
-    if (this.player1 && this.player2) {
-      this.world.updateCamera(this.player1.position, this.player2.position, dt);
+    // Camera — track player1 vs nearest living enemy
+    if (this.player1) {
+      const camRef = allPlayers.find(c => c !== this.player1 && c.isAlive)
+                  || (allPlayers[1] ?? this.player1);
+      this.world.updateCamera(this.player1.position, camRef.position, dt);
     }
 
     // HUD
     if (this.player1 && this.player2) {
       this.hud.update(this.player1, this.player2);
     }
-    // Ability status bars in HUD
+    this.hud.updateScore(this.state.score);
+    this.hud.updateTrophies(this.trophies.trophies);
+    const livingEnemyCount = allPlayers.filter(c => c !== this.player1 && c.isAlive).length;
+    this.hud.updateEnemyCount(livingEnemyCount, allPlayers.length - 1);
+    // Ability status bars
     if (this.player1) this.hud.updateAbilities('p1', this.player1.abilities);
     if (this.player2) this.hud.updateAbilities('p2', this.player2.abilities);
-    this.hud.updateScore(this.state.score);
 
     // Debug
     this._updateDebug();

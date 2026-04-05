@@ -14,7 +14,7 @@ import {
   buildSpikeOrbitMesh,
 } from './weaponModels.js';
 
-export const WORLD_HALF = 19;   // half of play-area size
+export const WORLD_HALF = 27;   // half of play-area size (WORLD_SIZE 55 / 2)
 const GRAVITY            = 22;  // units / s²
 const GROUND_Y           = 0;   // logical Y when standing
 
@@ -157,6 +157,63 @@ export class Character {
     sprite.scale.set(2, 0.5, 1);
     sprite.position.set(0, 1.0, 0);
     this.mesh.add(sprite);
+  }
+
+  // ── Skin / visual customisation ────────────────────────────────────────────
+
+  /**
+   * Apply a skin to this character.
+   * @param {number|null} color  — hex color, or null to keep the original
+   * @param {boolean}     glitter
+   */
+  applySkinColor(color, glitter) {
+    const c = color !== null ? color : this.color;
+    this.bodyMat.color.setHex(c);
+    this.bodyMat.emissive.setHex(c);
+    const tipColor = new THREE.Color(c).multiplyScalar(0.65);
+    this.tipMat.color.copy(tipColor);
+    this.tipMat.emissive.copy(tipColor);
+    // Don't overwrite this.color — it still drives hit-flash reset target
+
+    if (glitter) this._addGlitter();
+    else         this._removeGlitter();
+  }
+
+  _addGlitter() {
+    if (this._glitterMeshes) return;
+    this._glitterMeshes = [];
+    for (let i = 0; i < 10; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color:       i % 2 === 0 ? 0xffffff : 0xaaddff,
+        transparent: true,
+        opacity:     0.9,
+      });
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.04 + Math.random() * 0.03, 4, 4), mat);
+      sphere._gAngle  = (i / 10) * Math.PI * 2;
+      sphere._gRadius = 0.75 + Math.random() * 0.55;
+      sphere._gHeight = (Math.random() - 0.5) * 0.9;
+      sphere._gSpeed  = 1.2 + Math.random() * 1.8;
+      this.mesh.add(sphere);
+      this._glitterMeshes.push(sphere);
+    }
+  }
+
+  _removeGlitter() {
+    if (!this._glitterMeshes) return;
+    this._glitterMeshes.forEach(s => this.mesh.remove(s));
+    this._glitterMeshes = null;
+  }
+
+  _updateGlitter(dt) {
+    if (!this._glitterMeshes) return;
+    const t = Date.now() * 0.001;
+    this._glitterMeshes.forEach((s, i) => {
+      s._gAngle += s._gSpeed * dt;
+      s.position.x = Math.cos(s._gAngle) * s._gRadius;
+      s.position.z = Math.sin(s._gAngle) * s._gRadius;
+      s.position.y = s._gHeight + Math.sin(t * 3 + i * 0.9) * 0.12;
+      s.material.opacity = 0.5 + 0.5 * Math.abs(Math.sin(t * 4 + i * 1.1));
+    });
   }
 
   showWeaponModel(weapon) {
@@ -396,6 +453,9 @@ export class Character {
     } else {
       this.mesh.scale.set(1, 1, 1);
     }
+
+    // Glitter particles (Prestige skin)
+    this._updateGlitter(dt);
 
     // Rotate spike orbit
     if (this._spikeOrbit) {
