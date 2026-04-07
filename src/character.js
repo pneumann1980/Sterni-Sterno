@@ -51,8 +51,8 @@ export class Character {
     this.JUMP_FORCE         = 13;
     this.moveSpeed          = 8;
 
-    // Weapon slots
-    this.weaponSlots = new WeaponSlots(4);
+    // Weapon slots — max 1 at a time
+    this.weaponSlots = new WeaponSlots(1);
 
     // Ability system
     this.abilities = new AbilityManager();
@@ -61,6 +61,9 @@ export class Character {
     // Internal visual state
     this._buriedOpacitySet = false;
     this._spikeOrbit       = null;
+    this._rainbowActive    = false;
+    this._rainbowHue       = 0;
+    this._wrackMeshes      = null;
 
     // Three.js mesh
     this._buildMesh();
@@ -163,20 +166,28 @@ export class Character {
 
   /**
    * Apply a skin to this character.
-   * @param {number|null} color  — hex color, or null to keep the original
+   * @param {number|null} color    — hex color, or null to keep the original
    * @param {boolean}     glitter
+   * @param {boolean}     rainbow  — animated rainbow cycling
+   * @param {boolean}     wrackDeco — wreck decorations (algae, barnacles)
    */
-  applySkinColor(color, glitter) {
-    const c = color !== null ? color : this.color;
-    this.bodyMat.color.setHex(c);
-    this.bodyMat.emissive.setHex(c);
-    const tipColor = new THREE.Color(c).multiplyScalar(0.65);
-    this.tipMat.color.copy(tipColor);
-    this.tipMat.emissive.copy(tipColor);
+  applySkinColor(color, glitter, rainbow = false, wrackDeco = false) {
+    this._rainbowActive = rainbow;
+    if (!rainbow) {
+      const c = color !== null ? color : this.color;
+      this.bodyMat.color.setHex(c);
+      this.bodyMat.emissive.setHex(c);
+      const tipColor = new THREE.Color(c).multiplyScalar(0.65);
+      this.tipMat.color.copy(tipColor);
+      this.tipMat.emissive.copy(tipColor);
+    }
     // Don't overwrite this.color — it still drives hit-flash reset target
 
     if (glitter) this._addGlitter();
     else         this._removeGlitter();
+
+    if (wrackDeco) this._addWrackDeco();
+    else           this._removeWrackDeco();
   }
 
   _addGlitter() {
@@ -214,6 +225,97 @@ export class Character {
       s.position.y = s._gHeight + Math.sin(t * 3 + i * 0.9) * 0.12;
       s.material.opacity = 0.5 + 0.5 * Math.abs(Math.sin(t * 4 + i * 1.1));
     });
+  }
+
+  // ── Rainbow skin ───────────────────────────────────────────────────────────
+
+  _updateRainbow(dt) {
+    if (!this._rainbowActive) return;
+    this._rainbowHue = (this._rainbowHue + dt * 0.5) % 1.0; // full cycle every 2 s
+    const c = new THREE.Color().setHSL(this._rainbowHue, 1.0, 0.55);
+    this.bodyMat.color.copy(c);
+    this.bodyMat.emissive.copy(c);
+    this.bodyMat.emissiveIntensity = 0.4;
+    const tip = c.clone().multiplyScalar(0.65);
+    this.tipMat.color.copy(tip);
+    this.tipMat.emissive.copy(tip);
+  }
+
+  // ── Wrack-Skin decorations ─────────────────────────────────────────────────
+
+  _addWrackDeco() {
+    if (this._wrackMeshes) return;
+    this._wrackMeshes = [];
+
+    // Algae strands: 6 thin elongated cylinders hanging from arms
+    const algaeMat = new THREE.MeshLambertMaterial({ color: 0x2d7a2d, transparent: true, opacity: 0.85 });
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const r     = 0.5 + Math.random() * 0.5;
+      const geo   = new THREE.CylinderGeometry(0.03, 0.01, 0.4 + Math.random() * 0.4, 4);
+      const strand = new THREE.Mesh(geo, algaeMat.clone());
+      strand.position.set(Math.cos(angle) * r, -0.25 - Math.random() * 0.2, Math.sin(angle) * r);
+      strand.rotation.z = (Math.random() - 0.5) * 0.6;
+      strand._waveOffset = Math.random() * Math.PI * 2;
+      this.mesh.add(strand);
+      this._wrackMeshes.push(strand);
+    }
+
+    // Barnacles: 4 small flat disc shapes on the body
+    const barnacleMat = new THREE.MeshLambertMaterial({ color: 0x9e8060 });
+    for (let i = 0; i < 4; i++) {
+      const angle  = (i / 4) * Math.PI * 2;
+      const barnacle = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.10, 0.12, 0.08, 6),
+        barnacleMat
+      );
+      barnacle.position.set(Math.cos(angle) * 0.45, 0.08, Math.sin(angle) * 0.45);
+      barnacle.rotation.x = (Math.random() - 0.5) * 0.4;
+      this.mesh.add(barnacle);
+      this._wrackMeshes.push(barnacle);
+    }
+
+    // Rising bubbles: 5 transparent spheres orbiting slowly upward
+    for (let i = 0; i < 5; i++) {
+      const bubbleMat = new THREE.MeshBasicMaterial({
+        color: 0x88ddff, transparent: true, opacity: 0.45,
+      });
+      const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.06 + Math.random() * 0.05, 5, 4), bubbleMat);
+      bubble._bubbleAngle = (i / 5) * Math.PI * 2;
+      bubble._bubbleR     = 0.6 + Math.random() * 0.4;
+      bubble._bubbleSpeed = 0.4 + Math.random() * 0.6;
+      bubble._bubbleY     = Math.random();  // 0..1 normalized phase
+      this.mesh.add(bubble);
+      this._wrackMeshes.push(bubble);
+    }
+  }
+
+  _removeWrackDeco() {
+    if (!this._wrackMeshes) return;
+    this._wrackMeshes.forEach(m => this.mesh.remove(m));
+    this._wrackMeshes = null;
+  }
+
+  _updateWrackDeco(dt) {
+    if (!this._wrackMeshes) return;
+    const t = Date.now() * 0.001;
+
+    for (const m of this._wrackMeshes) {
+      if (m._waveOffset !== undefined) {
+        // Algae sway
+        m.rotation.z = Math.sin(t * 1.8 + m._waveOffset) * 0.3;
+      } else if (m._bubbleAngle !== undefined) {
+        // Rising bubbles
+        m._bubbleY = (m._bubbleY + dt * m._bubbleSpeed * 0.3) % 1.0;
+        m._bubbleAngle += dt * 0.4;
+        m.position.set(
+          Math.cos(m._bubbleAngle) * m._bubbleR,
+          -0.4 + m._bubbleY * 1.2,
+          Math.sin(m._bubbleAngle) * m._bubbleR
+        );
+        m.material.opacity = 0.2 + 0.3 * Math.sin(t * 2 + m._bubbleAngle);
+      }
+    }
   }
 
   showWeaponModel(weapon) {
@@ -456,6 +558,12 @@ export class Character {
 
     // Glitter particles (Prestige skin)
     this._updateGlitter(dt);
+
+    // Rainbow color cycling
+    this._updateRainbow(dt);
+
+    // Wrack-Skin animated decorations
+    this._updateWrackDeco(dt);
 
     // Rotate spike orbit
     if (this._spikeOrbit) {

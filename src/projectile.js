@@ -121,6 +121,7 @@ export class Projectile {
     for (const ch of characters) {
       if (!ch || !ch.isAlive) continue;
       if (ch === this.owner) continue;
+      if (ch.isBuried) continue;  // buried characters are immune to projectiles
 
       const dx = this.position.x - ch.position.x;
       const dy = this.position.y - ch.position.y;

@@ -582,17 +582,52 @@
       width: 100%;
       backdrop-filter: blur(6px);
     }
+    #hud-top-left {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 100px;
+    }
     #trophy-display {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 20px;
+      gap: 5px;
+      font-size: 18px;
       font-weight: 800;
       color: #ffdd00;
       text-shadow: 0 0 10px rgba(255,200,0,0.6);
-      min-width: 90px;
     }
-    .trophy-icon { font-size: 22px; }
+    .trophy-icon { font-size: 20px; }
+    #coin-display {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffcc44;
+    }
+    .coin-icon { font-size: 16px; }
+    #hud-top-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 190px;
+      justify-content: flex-end;
+    }
+    .hud-shop-btn {
+      background: linear-gradient(135deg, #005522, #00aa44);
+      border: 2px solid rgba(80,220,120,0.55);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+      pointer-events: all;
+      box-shadow: 0 0 10px rgba(0,200,80,0.3);
+    }
+    .hud-shop-btn:hover { transform: scale(1.05); box-shadow: 0 0 16px rgba(0,220,80,0.5); }
     #hud-center-info {
       display: flex;
       flex-direction: column;
@@ -743,6 +778,120 @@
       font-size: 15px;
     }
 
+    /* ── Shop modal ──────────────────────────────────────────────────────────── */
+    #shop-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,5,20,0.88);
+      backdrop-filter: blur(8px);
+    }
+    #shop-modal-inner {
+      background: rgba(0,18,50,0.97);
+      border: 1px solid rgba(60,200,100,0.4);
+      border-radius: 16px;
+      padding: 28px 32px;
+      max-width: 520px;
+      width: 92vw;
+      max-height: 82vh;
+      overflow-y: auto;
+    }
+    #shop-modal-inner h3 {
+      font-size: 22px;
+      color: #44ee88;
+      text-align: center;
+      margin-bottom: 6px;
+      text-shadow: 0 0 12px rgba(60,220,100,0.5);
+    }
+    #shop-balance-line {
+      text-align: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffcc44;
+      margin-bottom: 18px;
+    }
+    #shop-list { display: flex; flex-direction: column; gap: 14px; }
+    .shop-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 2px solid rgba(255,255,255,0.10);
+      transition: border-color 0.15s;
+    }
+    .shop-card.shop-owned  { border-color: rgba(60,200,100,0.55); }
+    .shop-card.shop-active { border-color: rgba(60,200,100,0.85); background: rgba(0,80,40,0.22); }
+    .shop-swatch {
+      width: 58px; height: 58px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 3px solid rgba(255,255,255,0.22);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      overflow: hidden;
+      position: relative;
+    }
+    .shop-swatch.swatch-rainbow {
+      background: conic-gradient(red,orange,yellow,lime,cyan,blue,violet,red);
+      animation: rainbow-spin 2s linear infinite;
+    }
+    @keyframes rainbow-spin { to { filter: hue-rotate(360deg); } }
+    .shop-swatch.swatch-wrack { background: #5a3a0a; }
+    .shop-info { flex: 1; }
+    .shop-name { font-size: 15px; font-weight: 700; color: #ddd; margin-bottom: 3px; }
+    .shop-desc { font-size: 12px; color: #889; }
+    .shop-price {
+      font-size: 13px; font-weight: 700; color: #ffcc44; margin-top: 5px;
+    }
+    .shop-btn-col { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+    .shop-buy-btn {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 20px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #005522, #00aa44);
+      border: 2px solid rgba(60,220,100,0.55);
+      color: #fff;
+      white-space: nowrap;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .shop-buy-btn:hover:not(:disabled) { transform: scale(1.05); box-shadow: 0 0 14px rgba(0,200,80,0.5); }
+    .shop-buy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .shop-equip-btn {
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 20px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #330066, #6600cc);
+      border: 2px solid rgba(200,100,255,0.5);
+      color: #fff;
+      white-space: nowrap;
+    }
+    .shop-equip-btn.shop-active-btn {
+      background: linear-gradient(135deg, #004400, #00aa44);
+      border-color: rgba(60,220,100,0.55);
+    }
+    #btn-close-shop {
+      margin-top: 18px;
+      width: 100%;
+      padding: 10px;
+      font-size: 15px;
+    }
+    /* buy flash animation */
+    @keyframes buy-flash {
+      0%   { box-shadow: 0 0 0 rgba(0,255,100,0); }
+      50%  { box-shadow: 0 0 24px rgba(0,255,100,0.8); }
+      100% { box-shadow: 0 0 0 rgba(0,255,100,0); }
+    }
+    .buy-flash { animation: buy-flash 0.6s ease-out; }
+
     /* ── Unlock toast ────────────────────────────────────────────────────────── */
     #unlock-toast {
       display: none;
@@ -770,8 +919,10 @@
       .bar-bg       { height: 8px; }
       .ability-row  { display: none; }
       #hud-top-bar  { padding: 4px 10px; }
-      #trophy-display { font-size: 16px; }
-      .hud-skins-btn { font-size: 11px; padding: 4px 10px; }
+      #trophy-display { font-size: 14px; }
+      #coin-display   { font-size: 11px; }
+      .hud-skins-btn  { font-size: 11px; padding: 4px 9px; }
+      .hud-shop-btn   { font-size: 11px; padding: 4px 9px; }
       #tc-btn-jump   { width: 68px; height: 68px; font-size: 22px; }
       #tc-jump-zone  { width: 80px; height: 80px; }
       #tc-jump-label { font-size: 12px; }
@@ -788,7 +939,7 @@
   <!-- ── Main Menu ──────────────────────────────────────────────────────── -->
   <div id="menu" class="overlay">
     <h1>🌊 Seestern Fighters</h1>
-    <div class="subtitle">v0.8 — Trophäen &amp; Arena Edition</div>
+    <div class="subtitle">v0.9 — Shop &amp; Unterseetaler Edition</div>
     <!-- Difficulty selector -->
     <div class="diff-row">
       <span class="diff-label">Schwierigkeit:</span>
@@ -799,6 +950,7 @@
 
     <div class="btn-row" style="margin-bottom:10px">
       <button class="btn" id="btn-skins-menu" style="background:linear-gradient(135deg,#330066,#6600cc);border:2px solid rgba(200,100,255,0.5)">🎨 Skins</button>
+      <button class="btn" id="btn-shop-menu" style="background:linear-gradient(135deg,#005522,#00aa44);border:2px solid rgba(60,220,100,0.5)">🛒 Shop</button>
     </div>
     <p>Wähle deinen Spielmodus:</p>
     <div class="btn-row">
@@ -836,6 +988,16 @@
     <div class="btn-row">
       <button class="btn" id="btn-resume">▶ Weiter (ESC)</button>
       <button class="btn secondary" id="btn-pause-menu">🏠 Zum Menü</button>
+    </div>
+  </div>
+
+  <!-- ── Shop modal ───────────────────────────────────────────────────────── -->
+  <div id="shop-modal">
+    <div id="shop-modal-inner">
+      <h3>🛒 Unterseetaler-Shop</h3>
+      <div id="shop-balance-line">🪙 <span id="shop-coin-balance">0</span> Unterseetaler</div>
+      <div id="shop-list"><!-- populated by JS --></div>
+      <button class="btn secondary" id="btn-close-shop">Schließen</button>
     </div>
   </div>
 

@@ -82,15 +82,24 @@ export class HUD {
     this.container.innerHTML = `
       <!-- ── Top bar (Brawl Stars style) ─────────────────────────────────── -->
       <div id="hud-top-bar">
-        <div id="trophy-display">
-          <span class="trophy-icon">🏆</span>
-          <span id="trophy-count">0</span>
+        <div id="hud-top-left">
+          <div id="trophy-display">
+            <span class="trophy-icon">🏆</span>
+            <span id="trophy-count">0</span>
+          </div>
+          <div id="coin-display">
+            <span class="coin-icon">🪙</span>
+            <span id="coin-count">0</span>
+          </div>
         </div>
         <div id="hud-center-info">
           <div class="mode-badge" id="mode-badge">KI-Gegner</div>
           <div class="level-badge" id="level-badge"></div>
         </div>
-        <button id="btn-hud-skins" class="hud-skins-btn">🎨 Skins</button>
+        <div id="hud-top-right">
+          <button id="btn-hud-shop" class="hud-shop-btn">🛒 Shop</button>
+          <button id="btn-hud-skins" class="hud-skins-btn">🎨 Skins</button>
+        </div>
       </div>
 
       <!-- ── Panels row (player 1 left, center, player 2 right) ─────────── -->
@@ -192,7 +201,7 @@ export class HUD {
 
   // ── Public API ────────────────────────────────────────────────────────────────
 
-  init(p1, p2, mode, levelName, trophies = 0) {
+  init(p1, p2, mode, levelName, trophies = 0, coins = 0) {
     document.getElementById('p1-name').textContent = p1.name;
     document.getElementById('p2-name').textContent = p2 ? p2.name : 'Gegner';
     document.getElementById('mode-badge').textContent =
@@ -205,6 +214,7 @@ export class HUD {
       levelBadge.style.display = levelName ? 'block' : 'none';
     }
     this.updateTrophies(trophies);
+    this.updateCoins(coins);
     ['p1', 'p2'].forEach(px => {
       const el = document.getElementById(`${px}-ability-row`);
       if (el) el.innerHTML = '';
@@ -226,6 +236,12 @@ export class HUD {
   /** Update the persistent trophy counter (top-left). */
   updateTrophies(count) {
     const el = document.getElementById('trophy-count');
+    if (el) el.textContent = count;
+  }
+
+  /** Update the Unterseetaler coin counter (top-left). */
+  updateCoins(count) {
+    const el = document.getElementById('coin-count');
     if (el) el.textContent = count;
   }
 

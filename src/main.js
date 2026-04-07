@@ -31,7 +31,7 @@ import { PickupManager }      from './pickup.js';
 import { ObstacleSystem }     from './obstacles.js';
 import { LEVELS }             from './level.js';
 import { TouchInput }         from './touch.js';
-import { TrophyManager, SKIN_DEFS } from './trophies.js';
+import { TrophyManager, SKIN_DEFS, SHOP_SKIN_DEFS } from './trophies.js';
 import { MatchmakingClient, MatchState } from './matchmaking.js';
 
 // Projectile configuration keyed by weapon.key
@@ -134,6 +134,10 @@ class Game {
     const skinsMenuBtn = document.getElementById('btn-skins-menu');
     if (skinsMenuBtn) skinsMenuBtn.onclick = () => this._openSkinsModal();
 
+    // Shop button (in menu area)
+    const shopMenuBtn = document.getElementById('btn-shop-menu');
+    if (shopMenuBtn) shopMenuBtn.onclick = () => this._openShopModal();
+
     // Difficulty selector
     document.querySelectorAll('.diff-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -150,6 +154,13 @@ class Game {
     document.getElementById('btn-resume').onclick   = () => this._resume();
     document.getElementById('btn-pause-menu').onclick = () => this._goToMenu();
 
+    // HUD shop button (top-right during game)
+    const hudShopBtn = document.getElementById('btn-hud-shop');
+    if (hudShopBtn) hudShopBtn.onclick = () => {
+      if (this.state.isPlaying) this._pause();
+      this._openShopModal();
+    };
+
     // HUD skins button (top-right during game)
     const hudSkinsBtn = document.getElementById('btn-hud-skins');
     if (hudSkinsBtn) hudSkinsBtn.onclick = () => {
@@ -160,6 +171,10 @@ class Game {
     // Skins modal close
     const closeSkinsBtn = document.getElementById('btn-close-skins');
     if (closeSkinsBtn) closeSkinsBtn.onclick = () => this._closeSkinsModal();
+
+    // Shop modal close
+    const closeShopBtn = document.getElementById('btn-close-shop');
+    if (closeShopBtn) closeShopBtn.onclick = () => this._closeShopModal();
 
     // "Next Level" button — injected dynamically
     const nextBtn = document.getElementById('btn-next-level');
@@ -285,11 +300,16 @@ class Game {
 
   _applySkinToCharacter(character) {
     const def = this.trophies.getActiveSkinDef();
-    character.applySkinColor(def.color, def.glitter);
+    character.applySkinColor(
+      def.color,
+      def.glitter    || false,
+      def.rainbow    || false,
+      def.wrackDeco  || false,
+    );
   }
 
   _showUnlockNotification(skinKey) {
-    const def = SKIN_DEFS[skinKey];
+    const def = SKIN_DEFS[skinKey] || SHOP_SKIN_DEFS[skinKey];
     if (!def) return;
     const el = document.getElementById('unlock-toast');
     if (!el) return;
@@ -297,6 +317,95 @@ class Game {
     el.style.display = 'block';
     clearTimeout(this._unlockTimeout);
     this._unlockTimeout = setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
+  // ── Shop modal ────────────────────────────────────────────────────────────────
+
+  _openShopModal() {
+    this._renderShopModal();
+    document.getElementById('shop-modal').style.display = 'flex';
+  }
+
+  _closeShopModal() {
+    document.getElementById('shop-modal').style.display = 'none';
+  }
+
+  _renderShopModal() {
+    const balEl = document.getElementById('shop-coin-balance');
+    if (balEl) balEl.textContent = this.trophies.coins.toLocaleString('de-DE');
+
+    const list = document.getElementById('shop-list');
+    if (!list) return;
+    const skins = this.trophies.getAllShopSkinsWithStatus();
+
+    list.innerHTML = skins.map(skin => {
+      const swatchClass = skin.key === 'rainbow' ? 'swatch-rainbow' : 'swatch-wrack';
+      const swatchIcon  = skin.key === 'wrack' ? '🪸' : '🌈';
+      const priceStr    = `🪙 ${skin.price.toLocaleString('de-DE')} Taler`;
+
+      let buyBtn = '';
+      if (!skin.owned) {
+        const disabled = skin.canAfford ? '' : ' disabled';
+        const label    = skin.canAfford ? `Kaufen (${priceStr})` : `Zu wenig Taler (${priceStr})`;
+        buyBtn = `<button class="shop-buy-btn" data-key="${skin.key}"${disabled}>${label}</button>`;
+      }
+
+      const equipBtnClass = skin.active ? 'shop-equip-btn shop-active-btn' : 'shop-equip-btn';
+      const equipLabel    = skin.active ? '✓ Ausgerüstet' : 'Ausrüsten';
+      const equipBtn      = skin.owned
+        ? `<button class="${equipBtnClass}" data-key="${skin.key}" data-action="equip">${equipLabel}</button>`
+        : '';
+
+      const ownedTag = skin.owned
+        ? `<span style="font-size:11px;color:#44ee88;display:block;margin-top:5px">✓ Gekauft</span>`
+        : '';
+
+      return `
+        <div class="shop-card${skin.active ? ' shop-active' : ''}${skin.owned ? ' shop-owned' : ''}"
+             id="shop-card-${skin.key}">
+          <div class="shop-swatch ${swatchClass}">${skin.key !== 'rainbow' ? swatchIcon : ''}</div>
+          <div class="shop-info">
+            <div class="shop-name">${skin.name}</div>
+            <div class="shop-desc">${skin.description}</div>
+            <div class="shop-price">${priceStr}</div>
+            ${ownedTag}
+          </div>
+          <div class="shop-btn-col">
+            ${buyBtn}
+            ${equipBtn}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Bind buy buttons
+    list.querySelectorAll('.shop-buy-btn:not([disabled])').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key    = btn.dataset.key;
+        const result = this.trophies.buyShopSkin(key);
+        if (result === 'ok') {
+          // Flash the card
+          const card = document.getElementById(`shop-card-${key}`);
+          if (card) {
+            card.classList.add('buy-flash');
+            setTimeout(() => card.classList.remove('buy-flash'), 700);
+          }
+          this._showUnlockNotification(key);
+          this._renderShopModal(); // re-render
+        }
+      });
+    });
+
+    // Bind equip buttons
+    list.querySelectorAll('[data-action="equip"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.key;
+        if (this.trophies.setShopSkin(key)) {
+          if (this.player1) this._applySkinToCharacter(this.player1);
+          this._renderShopModal();
+        }
+      });
+    });
   }
 
   // ── Game flow ───────────────────────────────────────────────────────────────
@@ -360,7 +469,7 @@ class Game {
     this.world.loadLevel(levelDef, this.obstacles, this.pickups, WEAPONS);
 
     this.hud.init(this.player1, this.player2, mode, levelDef.name,
-                  this.trophies.trophies);
+                  this.trophies.trophies, this.trophies.coins);
 
     this._showScreen('none');
     document.getElementById('hud').style.display = 'flex';
@@ -368,12 +477,8 @@ class Game {
   }
 
   _equipDefault(char) {
-    // Muschel-Shooter in slot 0 (active), Blasenkanone in slot 1
-    // Slots 2-3 stay empty (available for dropped weapon pickups)
-    char.weaponSlots.equip(0, this._cloneWeapon(WEAPONS.muschelShooter));
-    char.weaponSlots.equip(1, this._cloneWeapon(WEAPONS.blasenkanone));
-    char.weaponSlots.equip(2, null);
-    char.weaponSlots.equip(3, null);
+    // Start with no weapons — pick them up from the arena
+    char.weaponSlots.equip(0, null);
   }
 
   /** Clone a weapon so each character has independent cooldown state. */
@@ -445,11 +550,14 @@ class Game {
     document.getElementById('winner-text').style.color = isWin ? '#ffdd00' : '#ff4444';
     const deltaEl = document.getElementById('score-delta');
     if (deltaEl) {
-      deltaEl.textContent = isWin ? '+10 🏆 Trophäen' : '−5 🏆 Trophäen';
+      deltaEl.textContent = isWin
+        ? '+10 🏆 Trophäen  |  +200 🪙 Unterseetaler'
+        : '−5 🏆 Trophäen';
       deltaEl.style.color = isWin ? '#88ff88' : '#ff6666';
     }
     this.hud.updateScore(this.state.score);
     this.hud.updateTrophies(this.trophies.trophies);
+    this.hud.updateCoins(this.trophies.coins);
 
     // Show / update next-level button
     let nextBtn = document.getElementById('btn-next-level');
@@ -895,6 +1003,7 @@ class Game {
     }
     this.hud.updateScore(this.state.score);
     this.hud.updateTrophies(this.trophies.trophies);
+    this.hud.updateCoins(this.trophies.coins);
     const livingEnemyCount = allPlayers.filter(c => c !== this.player1 && c.isAlive).length;
     this.hud.updateEnemyCount(livingEnemyCount, allPlayers.length - 1);
     // Ability status bars

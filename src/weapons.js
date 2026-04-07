@@ -34,7 +34,7 @@ export const WEAPONS = {
   muschelShooter: new Weapon({
     key:      'muschelShooter',
     name:     'Muschel-Shooter',
-    damage:   20,
+    damage:   8,
     type:     'projectile',
     cooldown: 0.65,
   }),
@@ -42,7 +42,7 @@ export const WEAPONS = {
   blasenkanone: new Weapon({
     key:      'blasenkanone',
     name:     'Blasenkanone',
-    damage:   30,
+    damage:   15,
     type:     'projectile',
     cooldown: 1.8,
     special:  'large_slow',

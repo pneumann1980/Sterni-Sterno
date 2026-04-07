@@ -28,6 +28,7 @@ export class CombatSystem {
     if (attacker.attackLanded)    return null;
     if (attacker.velocity.y >= 0) return null;  // must be falling
     if (!target.isAlive)          return null;
+    if (target.isBuried)          return null;  // buried = immune to jump attacks
 
     const dx = attacker.position.x - target.position.x;
     const dz = attacker.position.z - target.position.z;
