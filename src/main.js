@@ -86,6 +86,7 @@ class Game {
     this._bindGlobalKeys();
     this._buildLevelSelector();
     this._initNameSystem();
+    this._updateMenuStats();
   }
 
   // ── Player name system ────────────────────────────────────────────────────────
@@ -160,30 +161,33 @@ class Game {
   // ── Button wiring ───────────────────────────────────────────────────────────
 
   _buildLevelSelector() {
-    const hint = document.querySelector('.controls-hint');
-    if (!hint) return;
-
-    // Insert level selector before controls hint
-    const levelRow = document.createElement('div');
-    levelRow.className = 'btn-row level-selector';
-    levelRow.style.marginTop = '16px';
-    levelRow.style.marginBottom = '4px';
+    const container = document.getElementById('level-selector');
+    if (!container) return;
 
     LEVELS.forEach((level, i) => {
       const btn = document.createElement('button');
-      btn.className = `btn level-btn${i === 0 ? ' level-btn-active' : ' secondary'}`;
-      btn.textContent = `${i + 1}: ${level.name}`;
+      btn.className = `level-btn${i === 0 ? ' level-btn-active' : ''}`;
+      btn.title = level.name;
+      btn.textContent = `${i + 1}`;
       btn.dataset.levelIndex = i;
       btn.onclick = () => {
         this._selectedLevel = i;
         document.querySelectorAll('.level-btn').forEach((b, bi) => {
-          b.className = `btn level-btn${bi === i ? ' level-btn-active' : ' secondary'}`;
+          b.className = `level-btn${bi === i ? ' level-btn-active' : ''}`;
         });
       };
-      levelRow.appendChild(btn);
+      container.appendChild(btn);
     });
 
-    hint.parentNode.insertBefore(levelRow, hint);
+    // Wire controls toggle
+    const toggleBtn = document.getElementById('btn-toggle-controls');
+    const hintBox   = document.getElementById('controls-hint-box');
+    if (toggleBtn && hintBox) {
+      toggleBtn.onclick = () => {
+        const open = hintBox.classList.toggle('open');
+        toggleBtn.textContent = open ? '🎮 Steuerung verbergen' : '🎮 Steuerung anzeigen';
+      };
+    }
   }
 
   _bindMenuButtons() {
@@ -690,7 +694,15 @@ class Game {
     this.state.toMenu();
     document.getElementById('hud').style.display = 'none';
     this.touch.hide();
+    this._updateMenuStats();
     this._showScreen('menu');
+  }
+
+  _updateMenuStats() {
+    const trophyEl = document.getElementById('menu-trophy-count');
+    const coinEl   = document.getElementById('menu-coin-count');
+    if (trophyEl) trophyEl.textContent = this.trophies.getTrophies();
+    if (coinEl)   coinEl.textContent   = this.trophies.getCoins();
   }
 
   _pause() {

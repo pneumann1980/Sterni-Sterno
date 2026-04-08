@@ -302,32 +302,245 @@
 
     /* ── Level selector ──────────────────────────────────────────────────── */
     .level-selector {
-      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
     }
 
     .level-btn {
-      padding: 9px 20px;
-      font-size: 14px;
+      padding: 5px 11px;
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 0;
+      border-radius: 14px;
+      background: rgba(0,30,80,0.55);
+      border: 1px solid rgba(80,160,255,0.25);
+      color: #88aacc;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+    .level-btn:hover {
+      background: rgba(0,50,120,0.7);
+      border-color: rgba(80,180,255,0.5);
+      color: #fff;
     }
 
     .level-btn-active {
       background: linear-gradient(135deg, #005500, #00aa44) !important;
-      box-shadow: 0 4px 15px rgba(0,180,80,0.4) !important;
+      box-shadow: 0 4px 12px rgba(0,180,80,0.35) !important;
       border: 1px solid rgba(0,220,100,0.5);
     }
 
-    .controls-hint {
-      margin-top: 12px;
-      padding: 12px 22px;
-      background: rgba(0,20,60,0.6);
-      border: 1px solid rgba(80,160,255,0.2);
-      border-radius: 10px;
-      font-size: 12px;
-      color: #557799;
-      line-height: 1.8;
-      text-align: center;
-      max-width: 560px;
+    /* ── Menu redesign ───────────────────────────────────────────────────── */
+    #menu {
+      padding: 22px 28px 18px;
+      gap: 0;
+      max-width: 640px;
+      width: 96vw;
+      overflow-y: auto;
+      max-height: 98vh;
     }
+
+    .menu-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .menu-header h1 {
+      margin-bottom: 4px;
+      font-size: 42px;
+    }
+    .menu-version {
+      font-size: 11px;
+      color: #334455;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+    .menu-player-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(0,20,60,0.55);
+      border: 1px solid rgba(80,160,255,0.2);
+      border-radius: 24px;
+      padding: 8px 18px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .menu-player-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #88ccff;
+    }
+    .menu-stat {
+      font-size: 13px;
+      font-weight: 700;
+      color: #aabb88;
+    }
+    .menu-stat.gold { color: #ffcc44; }
+    #btn-change-name-top {
+      background: none;
+      border: 1px solid rgba(80,160,255,0.35);
+      color: #6699bb;
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    #btn-change-name-top:hover { border-color: rgba(80,200,255,0.6); color: #aaccee; }
+
+    /* ── Mode section ─────────────────────────────────────────────────── */
+    .menu-modes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      width: 100%;
+      margin-bottom: 14px;
+    }
+    .mode-section {
+      background: rgba(0,15,45,0.65);
+      border: 1px solid rgba(80,160,255,0.18);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .mode-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #4477aa;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 10px;
+    }
+    .mode-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .mode-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(0,30,80,0.6);
+      border: 1px solid rgba(80,160,255,0.22);
+      border-radius: 10px;
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+      text-align: left;
+      color: #fff;
+      width: 100%;
+    }
+    .mode-card:hover {
+      background: rgba(0,50,120,0.75);
+      border-color: rgba(80,180,255,0.5);
+      transform: translateX(2px);
+    }
+    .mode-card:active { transform: translateX(0); }
+    .mode-card-icon  { font-size: 22px; flex-shrink: 0; }
+    .mode-card-text  { display: flex; flex-direction: column; }
+    .mode-card-name  { font-size: 14px; font-weight: 700; line-height: 1.2; }
+    .mode-card-desc  { font-size: 11px; color: #6699bb; margin-top: 1px; }
+    /* Colour variants */
+    .mode-card.danger {
+      border-color: rgba(220,60,0,0.35);
+      background: rgba(60,10,0,0.6);
+    }
+    .mode-card.danger:hover {
+      background: rgba(100,20,0,0.75);
+      border-color: rgba(255,80,0,0.5);
+    }
+    .mode-card.success {
+      border-color: rgba(0,200,80,0.35);
+      background: rgba(0,40,20,0.6);
+    }
+    .mode-card.success:hover {
+      background: rgba(0,60,30,0.75);
+      border-color: rgba(0,220,100,0.55);
+    }
+
+    /* ── Bottom settings row ──────────────────────────────────────────── */
+    .menu-settings {
+      width: 100%;
+      background: rgba(0,12,36,0.55);
+      border: 1px solid rgba(80,160,255,0.15);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+    }
+    .settings-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .settings-row:last-child { margin-bottom: 0; }
+    .settings-label {
+      font-size: 11px;
+      color: #446688;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      flex-shrink: 0;
+      min-width: 65px;
+    }
+    .menu-utility-btns {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      justify-content: center;
+    }
+    .util-btn {
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 20px;
+      cursor: pointer;
+      border: none;
+      color: #fff;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .util-btn:hover { transform: scale(1.04); }
+    .util-btn.skin-style {
+      background: linear-gradient(135deg, #330066, #6600cc);
+      box-shadow: 0 0 10px rgba(150,50,255,0.35);
+    }
+    .util-btn.shop-style {
+      background: linear-gradient(135deg, #005522, #00aa44);
+      box-shadow: 0 0 10px rgba(0,180,80,0.3);
+    }
+
+    /* ── Collapsible controls hint ────────────────────────────────────── */
+    .controls-toggle {
+      background: none;
+      border: 1px solid rgba(80,160,255,0.2);
+      color: #446688;
+      font-size: 12px;
+      padding: 5px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      text-align: center;
+      transition: border-color 0.15s;
+      margin-top: 6px;
+    }
+    .controls-toggle:hover { border-color: rgba(80,160,255,0.45); color: #88aabb; }
+    .controls-hint {
+      margin-top: 8px;
+      padding: 10px 16px;
+      background: rgba(0,15,40,0.55);
+      border: 1px solid rgba(80,160,255,0.15);
+      border-radius: 10px;
+      font-size: 11px;
+      color: #446677;
+      line-height: 1.9;
+      display: none;
+    }
+    .controls-hint.open { display: block; }
 
     /* ── Debug ──────────────────────────────────────────────────────────── */
     #debug {
@@ -1042,42 +1255,100 @@
 
   <!-- ── Main Menu ──────────────────────────────────────────────────────── -->
   <div id="menu" class="overlay">
-    <h1>🌊 Seestern Fighters</h1>
-    <div class="subtitle">v0.10 — Online &amp; Unicorn Edition</div>
-    <div id="player-greeting" style="font-size:16px;color:#88ccff;margin-bottom:12px;font-weight:600;">
-      Hallo, <span id="player-name-display">Spieler</span>!
-      <button id="btn-change-name" style="background:none;border:1px solid rgba(80,160,255,0.4);color:#6699bb;font-size:12px;padding:3px 10px;border-radius:10px;cursor:pointer;margin-left:8px;">✏️ Name ändern</button>
-    </div>
-    <!-- Difficulty selector -->
-    <div class="diff-row">
-      <span class="diff-label">Schwierigkeit:</span>
-      <button class="diff-btn" data-diff="easy">😴 Easy</button>
-      <button class="diff-btn diff-active" data-diff="medium">⚡ Medium</button>
-      <button class="diff-btn" data-diff="hard">💀 Hard</button>
+
+    <!-- Header -->
+    <div class="menu-header">
+      <h1>🌊 Seestern Fighters</h1>
+      <div class="menu-version">v0.11 — Neue Maps &amp; Menü-Update</div>
+      <div class="menu-player-bar">
+        <span class="menu-player-name">👤 <span id="player-name-display">Spieler</span></span>
+        <span class="menu-stat">🏆 <span id="menu-trophy-count">0</span></span>
+        <span class="menu-stat gold">🪙 <span id="menu-coin-count">0</span></span>
+        <button id="btn-change-name" class="btn" style="padding:4px 12px;font-size:12px;border-radius:16px;background:none;border:1px solid rgba(80,160,255,0.35);color:#6699bb;">✏️ Name</button>
+      </div>
     </div>
 
-    <div class="btn-row" style="margin-bottom:10px">
-      <button class="btn" id="btn-skins-menu" style="background:linear-gradient(135deg,#330066,#6600cc);border:2px solid rgba(200,100,255,0.5)">🎨 Skins</button>
-      <button class="btn" id="btn-shop-menu" style="background:linear-gradient(135deg,#005522,#00aa44);border:2px solid rgba(60,220,100,0.5)">🛒 Shop</button>
+    <!-- Game mode cards (2-column grid) -->
+    <div class="menu-modes">
+      <!-- Left column: Lokal -->
+      <div class="mode-section">
+        <div class="mode-section-title">Lokal</div>
+        <div class="mode-cards">
+          <button class="mode-card" id="btn-vs-ai">
+            <span class="mode-card-icon">🤖</span>
+            <span class="mode-card-text">
+              <span class="mode-card-name">vs KI</span>
+              <span class="mode-card-desc">1 Spieler gegen KI</span>
+            </span>
+          </button>
+          <button class="mode-card" id="btn-vs-player">
+            <span class="mode-card-icon">⚔️</span>
+            <span class="mode-card-text">
+              <span class="mode-card-name">2 Spieler</span>
+              <span class="mode-card-desc">Lokal am selben Gerät</span>
+            </span>
+          </button>
+          <button class="mode-card" id="btn-vs-two-ai">
+            <span class="mode-card-icon">🦑</span>
+            <span class="mode-card-text">
+              <span class="mode-card-name">2 KIs</span>
+              <span class="mode-card-desc">Zwei KIs gegeneinander</span>
+            </span>
+          </button>
+          <button class="mode-card danger" id="btn-vs-multi-ai">
+            <span class="mode-card-icon">🌊</span>
+            <span class="mode-card-text">
+              <span class="mode-card-name">Arena (4 KIs)</span>
+              <span class="mode-card-desc">Chaos mit 4 Gegnern</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right column: Online + Einstellungen -->
+      <div class="mode-section">
+        <div class="mode-section-title">Online</div>
+        <div class="mode-cards">
+          <button class="mode-card success" id="btn-quickmatch">
+            <span class="mode-card-icon">⚡</span>
+            <span class="mode-card-text">
+              <span class="mode-card-name">Schnellsuche</span>
+              <span class="mode-card-desc">Online 1v1 Zufallsgegner</span>
+            </span>
+          </button>
+        </div>
+
+        <div class="mode-section-title" style="margin-top:14px;">Schwierigkeit</div>
+        <div class="diff-row" style="margin-bottom:0;">
+          <button class="diff-btn" data-diff="easy">😴 Easy</button>
+          <button class="diff-btn diff-active" data-diff="medium">⚡ Normal</button>
+          <button class="diff-btn" data-diff="hard">💀 Hard</button>
+        </div>
+      </div>
     </div>
-    <p>Wähle deinen Spielmodus:</p>
-    <div class="btn-row">
-      <button class="btn" id="btn-vs-ai">🤖 vs KI</button>
-      <button class="btn" id="btn-vs-player">⚔ 2-Spieler</button>
-      <button class="btn" id="btn-vs-two-ai">🦑 2 KIs</button>
-      <button class="btn" id="btn-vs-multi-ai" style="background:linear-gradient(135deg,#660000,#cc2200)">🌊 Arena (4 KIs)</button>
+
+    <!-- Settings row: Map + Skins/Shop -->
+    <div class="menu-settings">
+      <div class="settings-row">
+        <span class="settings-label">Map</span>
+        <div id="level-selector" class="level-selector"><!-- filled by JS --></div>
+      </div>
+      <div class="settings-row" style="justify-content:center;margin-top:4px;">
+        <button class="util-btn skin-style" id="btn-skins-menu">🎨 Skins</button>
+        <button class="util-btn shop-style" id="btn-shop-menu">🛒 Shop</button>
+      </div>
     </div>
-    <div class="btn-row" style="margin-top:10px">
-      <button class="btn" id="btn-quickmatch" style="background:linear-gradient(135deg,#004400,#00aa44);box-shadow:0 0 14px rgba(0,180,80,0.4)">⚡ Schnellsuche</button>
-    </div>
-    <!-- Level selector inserted here by main.js -->
-    <div class="controls-hint">
+
+    <!-- Collapsible controls -->
+    <button class="controls-toggle" id="btn-toggle-controls">🎮 Steuerung anzeigen</button>
+    <div class="controls-hint" id="controls-hint-box">
       <strong>Spieler 1:</strong> Pfeiltasten = Bewegen &nbsp;|&nbsp; Leertaste = Springen &nbsp;|&nbsp; Enter = Schießen &nbsp;|&nbsp; X = Fähigkeit<br>
       <strong>Spieler 2:</strong> WASD = Bewegen &nbsp;|&nbsp; F = Springen &nbsp;|&nbsp; G = Schießen &nbsp;|&nbsp; H = Fähigkeit<br>
       <strong>ESC</strong> = Pause &nbsp;|&nbsp; <strong>TAB</strong> = Debug-Info<br>
       <em style="color:#446644">Sprung-Angriff = auf Gegner landen (verliert Waffen!)</em><br>
-      <em style="color:#cc8800">Fähigkeiten: Stachel-Aura (passiv) · Nova-Explosion (X gedrückt halten) · Sand-Tarnung (X = vergraben, Sprung = auftauchen)</em>
+      <em style="color:#cc8800">Fähigkeiten: Stachel-Aura (passiv) · Nova-Explosion (X halten) · Sand-Tarnung (X = vergraben, Sprung = auftauchen)</em>
     </div>
+
   </div>
 
   <!-- ── Game Over ──────────────────────────────────────────────────────── -->

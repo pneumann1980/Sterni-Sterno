@@ -445,9 +445,11 @@ export class Character {
   /** Set horizontal movement intent. dx/dz are -1..1; magnitude is normalised. */
   move(dx, dz) {
     const len = Math.sqrt(dx * dx + dz * dz);
+    // Buried characters move at 25% speed (stealth crawl)
+    const spd = this.isBuried ? this.moveSpeed * 0.25 : this.moveSpeed;
     if (len > 0.001) {
-      this.velocity.x = (dx / len) * this.moveSpeed;
-      this.velocity.z = (dz / len) * this.moveSpeed;
+      this.velocity.x = (dx / len) * spd;
+      this.velocity.z = (dz / len) * spd;
     } else {
       this.velocity.x = 0;
       this.velocity.z = 0;
@@ -572,16 +574,20 @@ export class Character {
 
     // ── Buried state ──────────────────────────────────────────────────────────
     if (this.isBuried) {
-      // Half-submerged look
-      this.mesh.position.y = this.position.y - 0.55;
+      // Submerge the mesh — still 0.1 above ground so it's faintly visible
+      this.mesh.position.y = this.position.y - 0.65;
       if (!this._buriedOpacitySet) {
-        this._setMeshOpacity(0.18);
+        this._setMeshOpacity(0.15);
         this._buriedOpacitySet = true;
       }
+      // Subtle sand-ripple indicator: small scale pulse
+      const rp = 1 + 0.06 * Math.sin(Date.now() * 0.008);
+      this.mesh.scale.set(rp, rp, rp);
     } else {
       if (this._buriedOpacitySet) {
         this._setMeshOpacity(1.0);
         this._buriedOpacitySet = false;
+        this.mesh.scale.set(1, 1, 1); // restore scale
       }
       // Normal idle bob
       this.mesh.position.y = this.position.y + Math.sin(Date.now() * 0.002) * 0.04;
@@ -668,17 +674,20 @@ export class Character {
   }
 
   /**
-   * Set the opacity of all mesh materials.
+   * Set the opacity of all mesh materials (skips Sprite objects —
+   * they need transparent=true permanently for correct rendering).
    * @param {number} opacity 0..1
    */
   _setMeshOpacity(opacity) {
     const transparent = opacity < 1;
     this.mesh.traverse(obj => {
+      if (obj.isSprite) return;        // sprites handle their own transparency
       if (!obj.isMesh || !obj.material) return;
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       mats.forEach(m => {
         m.transparent = transparent;
         m.opacity     = opacity;
+        m.needsUpdate = true;
       });
     });
   }
