@@ -144,10 +144,10 @@ const level4 = {
   id:           'arena4',
   name:         'Piratenschiff',
   floorColor:   0x9a7840,   // sandy sea-bed
-  fogColor:     0x002244,
-  fogDensity:   0.010,
-  ambientColor: 0x1a2244,
-  sunColor:     0x5577aa,
+  fogColor:     0x002a55,
+  fogDensity:   0.009,
+  ambientColor: 0x224466,
+  sunColor:     0x6699cc,
 
   obstacles: [
     // ── Ship hull — North wall (3 planks, blocks entry from north) ──
@@ -266,10 +266,10 @@ const level6 = {
   id:           'arena6',
   name:         'Versunkene Stadt',
   floorColor:   0x5a5040,   // dark mossy stone
-  fogColor:     0x001122,
-  fogDensity:   0.013,
-  ambientColor: 0x0d1f33,
-  sunColor:     0x3355aa,
+  fogColor:     0x001a33,
+  fogDensity:   0.011,
+  ambientColor: 0x1a3355,
+  sunColor:     0x4488cc,
 
   obstacles: [
     // ── Central temple archway (two columns) ──
@@ -320,11 +320,11 @@ const level6 = {
 const level7 = {
   id:           'arena7',
   name:         'Vulkansee',
-  floorColor:   0x4a2e18,   // dark volcanic rock
-  fogColor:     0x110a00,
-  fogDensity:   0.012,
-  ambientColor: 0x220800,
-  sunColor:     0xaa4400,
+  floorColor:   0x5a3a1a,   // volcanic rock
+  fogColor:     0x2a1200,
+  fogDensity:   0.010,
+  ambientColor: 0x553311,
+  sunColor:     0xff7722,
 
   obstacles: [
     // ── Central lava vent (tall pillar) ──
@@ -377,11 +377,11 @@ const level7 = {
 const level8 = {
   id:           'arena8',
   name:         'Tiefsee-Graben',
-  floorColor:   0x1a1f2e,   // almost-black deep ocean floor
-  fogColor:     0x000811,
-  fogDensity:   0.016,
-  ambientColor: 0x050d1a,
-  sunColor:     0x1a2244,
+  floorColor:   0x1e2535,   // deep ocean floor
+  fogColor:     0x001122,
+  fogDensity:   0.013,
+  ambientColor: 0x0a1f3a,
+  sunColor:     0x2266cc,
 
   obstacles: [
     // ── Trench walls — two parallel rock corridors ──

@@ -164,11 +164,17 @@ class Game {
     const container = document.getElementById('level-selector');
     if (!container) return;
 
+    // Short display names for the compact pills
+    const shortNames = [
+      'Arena', 'Felsen', 'Koralle', 'Pirat',
+      'Riff', 'Ruinen', 'Vulkan', 'Graben',
+    ];
+
     LEVELS.forEach((level, i) => {
       const btn = document.createElement('button');
       btn.className = `level-btn${i === 0 ? ' level-btn-active' : ''}`;
-      btn.title = level.name;
-      btn.textContent = `${i + 1}`;
+      btn.title = level.name;   // full name on hover
+      btn.textContent = shortNames[i] || `${i + 1}`;
       btn.dataset.levelIndex = i;
       btn.onclick = () => {
         this._selectedLevel = i;
