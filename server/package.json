@@ -1,0 +1,12 @@
+{
+  "name": "seestern-fighters-server",
+  "version": "1.0.0",
+  "description": "WebSocket matchmaking + relay server for Seestern Fighters",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

@@ -63,7 +63,19 @@ export const SHOP_SKIN_DEFS = {
     glitter:     false,
     rainbow:     true,              // triggers rainbow color cycling
     wrackDeco:   false,
+    unicornHorn: false,
     description: 'Animierte Regenbogenfarben — leuchtet in allen Farben.',
+  },
+  unicorn: {
+    key:         'unicorn',
+    name:        'Unicorn-Skin',
+    color:       0xfff0ff,          // weißlich-rosa
+    price:       10000,
+    glitter:     false,
+    rainbow:     false,
+    wrackDeco:   false,
+    unicornHorn: true,              // triggers unicorn horn + sparkle effect
+    description: 'Weißer Seestern mit Einhorn-Horn ✨ — magisch & einzigartig!',
   },
 };
 

@@ -64,6 +64,7 @@ export class Character {
     this._rainbowActive    = false;
     this._rainbowHue       = 0;
     this._wrackMeshes      = null;
+    this._unicornMeshes    = null;
 
     // Three.js mesh
     this._buildMesh();
@@ -171,7 +172,7 @@ export class Character {
    * @param {boolean}     rainbow  — animated rainbow cycling
    * @param {boolean}     wrackDeco — wreck decorations (algae, barnacles)
    */
-  applySkinColor(color, glitter, rainbow = false, wrackDeco = false) {
+  applySkinColor(color, glitter, rainbow = false, wrackDeco = false, unicornHorn = false) {
     this._rainbowActive = rainbow;
     if (!rainbow) {
       const c = color !== null ? color : this.color;
@@ -188,6 +189,9 @@ export class Character {
 
     if (wrackDeco) this._addWrackDeco();
     else           this._removeWrackDeco();
+
+    if (unicornHorn) this._addUnicornDeco();
+    else             this._removeUnicornDeco();
   }
 
   _addGlitter() {
@@ -315,6 +319,88 @@ export class Character {
         );
         m.material.opacity = 0.2 + 0.3 * Math.sin(t * 2 + m._bubbleAngle);
       }
+    }
+  }
+
+  // ── Unicorn-Skin decorations ──────────────────────────────────────────────
+
+  _addUnicornDeco() {
+    if (this._unicornMeshes) return;
+    this._unicornMeshes = [];
+
+    // Unicorn horn: pink tapered cone sticking upward
+    const hornMat = new THREE.MeshLambertMaterial({
+      color:             0xff88cc,
+      emissive:          0xff44aa,
+      emissiveIntensity: 0.5,
+    });
+    const horn = new THREE.Mesh(
+      new THREE.ConeGeometry(0.10, 0.7, 8),
+      hornMat
+    );
+    horn.position.set(0, 0.65, 0.25);  // slightly forward-top of body
+    horn.rotation.x = -0.25;           // tilt forward a touch
+    this.mesh.add(horn);
+    this._unicornMeshes.push(horn);
+    this._hornMesh = horn;
+
+    // Spiral stripe on horn (small offset cylinder)
+    const stripeMat = new THREE.MeshLambertMaterial({ color: 0xffd4f0 });
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.018, 5, 12), stripeMat);
+    stripe.position.copy(horn.position);
+    stripe.position.y += 0.15;
+    stripe.rotation.copy(horn.rotation);
+    this.mesh.add(stripe);
+    this._unicornMeshes.push(stripe);
+
+    // Magic sparkle particles: 8 small colorful spheres
+    const sparkleColors = [0xff88cc, 0xcc88ff, 0xffffaa, 0x88ffcc, 0xffaaee];
+    for (let i = 0; i < 8; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color:       sparkleColors[i % sparkleColors.length],
+        transparent: true,
+        opacity:     0.9,
+      });
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.05 + Math.random() * 0.04, 5, 4), mat);
+      s._uAngle  = (i / 8) * Math.PI * 2;
+      s._uRadius = 0.9 + Math.random() * 0.5;
+      s._uHeight = (Math.random() - 0.3);
+      s._uSpeed  = 1.0 + Math.random() * 1.5;
+      s._uPhase  = Math.random() * Math.PI * 2;
+      this.mesh.add(s);
+      this._unicornMeshes.push(s);
+    }
+  }
+
+  _removeUnicornDeco() {
+    if (!this._unicornMeshes) return;
+    this._unicornMeshes.forEach(m => this.mesh.remove(m));
+    this._unicornMeshes = null;
+    this._hornMesh = null;
+  }
+
+  _updateUnicornDeco(dt) {
+    if (!this._unicornMeshes) return;
+    const t = Date.now() * 0.001;
+
+    // Horn shimmer
+    if (this._hornMesh) {
+      this._hornMesh.material.emissiveIntensity = 0.4 + 0.3 * Math.sin(t * 3.5);
+    }
+
+    // Sparkle particle orbits
+    for (const m of this._unicornMeshes) {
+      if (m._uAngle === undefined) continue;
+      m._uAngle += dt * m._uSpeed;
+      m.position.set(
+        Math.cos(m._uAngle) * m._uRadius,
+        m._uHeight + Math.sin(t * 2.5 + m._uPhase) * 0.22,
+        Math.sin(m._uAngle) * m._uRadius,
+      );
+      m.material.opacity = 0.55 + 0.45 * Math.abs(Math.sin(t * 4 + m._uPhase));
+      // Cycle sparkle hue gently
+      const hue = ((t * 0.12 + m._uPhase * 0.1) % 1);
+      m.material.color.setHSL(hue, 0.9, 0.75);
     }
   }
 
@@ -564,6 +650,9 @@ export class Character {
 
     // Wrack-Skin animated decorations
     this._updateWrackDeco(dt);
+
+    // Unicorn-Skin horn + sparkles
+    this._updateUnicornDeco(dt);
 
     // Rotate spike orbit
     if (this._spikeOrbit) {

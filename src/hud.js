@@ -97,6 +97,7 @@ export class HUD {
           <div class="level-badge" id="level-badge"></div>
         </div>
         <div id="hud-top-right">
+          <span id="conn-status"></span>
           <button id="btn-hud-shop" class="hud-shop-btn">🛒 Shop</button>
           <button id="btn-hud-skins" class="hud-skins-btn">🎨 Skins</button>
         </div>
@@ -205,8 +206,9 @@ export class HUD {
     document.getElementById('p1-name').textContent = p1.name;
     document.getElementById('p2-name').textContent = p2 ? p2.name : 'Gegner';
     document.getElementById('mode-badge').textContent =
-      mode === 'local-versus' ? '⚔ Lokal 2-Spieler'
+      mode === 'local-versus'  ? '⚔ Lokal 2-Spieler'
       : mode === 'vs-multi-ai' ? '🌊 Arena vs KI'
+      : mode === 'online-versus' ? '🌐 Online 1v1'
       : '🤖 KI-Gegner';
     const levelBadge = document.getElementById('level-badge');
     if (levelBadge) {
@@ -243,6 +245,19 @@ export class HUD {
   updateCoins(count) {
     const el = document.getElementById('coin-count');
     if (el) el.textContent = count;
+  }
+
+  /**
+   * Set the online connection status badge in the HUD.
+   * @param {'searching'|'online'|'offline'|null} status
+   * @param {string} [label]
+   */
+  setConnectionStatus(status, label = '') {
+    const el = document.getElementById('conn-status');
+    if (!el) return;
+    el.className = 'conn-' + (status || '');
+    el.textContent = label;
+    el.style.display = status ? 'inline-block' : 'none';
   }
 
   /** Show living enemy count in the center panel. */

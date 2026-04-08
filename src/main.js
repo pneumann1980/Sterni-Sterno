@@ -33,6 +33,7 @@ import { LEVELS }             from './level.js';
 import { TouchInput }         from './touch.js';
 import { TrophyManager, SKIN_DEFS, SHOP_SKIN_DEFS } from './trophies.js';
 import { MatchmakingClient, MatchState } from './matchmaking.js';
+import { GameSync } from './gamesync.js';
 
 // Projectile configuration keyed by weapon.key
 const PROJECTILE_CONFIG = {
@@ -66,6 +67,7 @@ class Game {
     this.projectiles = new ProjectileManager(this.world.scene);
     this.trophies    = new TrophyManager();
     this.matchmaking = null; // created on demand
+    this.gameSync    = null; // active GameSync instance (online mode only)
 
     // Characters: player1 = human, player2-5 = AI (depending on mode)
     this.player1  = null;
@@ -83,6 +85,76 @@ class Game {
     this._bindGameButtons();
     this._bindGlobalKeys();
     this._buildLevelSelector();
+    this._initNameSystem();
+  }
+
+  // ── Player name system ────────────────────────────────────────────────────────
+
+  get playerName() {
+    return localStorage.getItem('seestern_player_name') || '';
+  }
+
+  _initNameSystem() {
+    const savedName = this.playerName;
+    const nameDisplay = document.getElementById('player-name-display');
+    if (nameDisplay) nameDisplay.textContent = savedName || 'Spieler';
+
+    // Wire change-name button in menu
+    const changeBtn = document.getElementById('btn-change-name');
+    if (changeBtn) changeBtn.onclick = () => this._openNameModal();
+
+    // Wire name modal confirm
+    const confirmBtn = document.getElementById('name-confirm-btn');
+    if (confirmBtn) confirmBtn.onclick = () => this._submitName();
+
+    const nameInput = document.getElementById('name-input');
+    if (nameInput) {
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this._submitName();
+      });
+    }
+
+    // Show modal on first launch (no name saved)
+    if (!savedName) {
+      setTimeout(() => this._openNameModal(true), 100);
+    }
+  }
+
+  _openNameModal(firstLaunch = false) {
+    const modal = document.getElementById('name-modal');
+    if (!modal) return;
+    const input = document.getElementById('name-input');
+    if (input) {
+      input.value = this.playerName || '';
+      setTimeout(() => input.focus(), 80);
+    }
+    const errorEl = document.getElementById('name-error');
+    if (errorEl) errorEl.textContent = '';
+    const h2 = modal.querySelector('h2');
+    if (h2) h2.textContent = firstLaunch ? '🌊 Seestern Fighters' : '✏️ Name ändern';
+    modal.style.display = 'flex';
+  }
+
+  _closeNameModal() {
+    const modal = document.getElementById('name-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  _submitName() {
+    const input   = document.getElementById('name-input');
+    const errorEl = document.getElementById('name-error');
+    const name    = (input?.value || '').trim();
+
+    if (!name || name.length < 2) {
+      if (errorEl) errorEl.textContent = 'Name muss mindestens 2 Zeichen haben.';
+      return;
+    }
+
+    localStorage.setItem('seestern_player_name', name);
+    const display = document.getElementById('player-name-display');
+    if (display) display.textContent = name;
+    if (errorEl) errorEl.textContent = '';
+    this._closeNameModal();
   }
 
   // ── Button wiring ───────────────────────────────────────────────────────────
@@ -203,38 +275,44 @@ class Game {
   // ── Matchmaking ──────────────────────────────────────────────────────────────
 
   _startMatchmaking() {
+    // Ensure player has a name before searching
+    if (!this.playerName) {
+      this._openNameModal(true);
+      return;
+    }
+
     // Show searching overlay
-    const overlay = document.getElementById('matchmaking-overlay');
+    const overlay  = document.getElementById('matchmaking-overlay');
+    const statusEl = document.getElementById('mm-status');
     if (overlay) overlay.style.display = 'flex';
     this._showScreen('none'); // hide menu
 
     if (this.matchmaking) this.matchmaking.cancel();
     this.matchmaking = new MatchmakingClient(
-      (isOnline) => {
+      (isOnline, matchInfo) => {
         if (overlay) overlay.style.display = 'none';
-        if (isOnline) {
-          // Real player found — for now, treat as LOCAL_VERSUS
-          this._showScreen('menu');
-          this._showPickupMsg('System', 'Online-Spiel noch nicht verfügbar — KI-Match gestartet');
-          this._startGame(GameMode.VS_MULTI_AI, this._selectedLevel);
+        if (isOnline && matchInfo?.ws) {
+          // Real player found — start online game
+          console.log('[MM] Matched with', matchInfo.peerName, 'isHost=', matchInfo.isHost);
+          this._startOnlineGame(matchInfo);
         } else {
           // AI fallback
-          this._startGame(GameMode.VS_MULTI_AI, this._selectedLevel);
+          console.log('[MM] Fallback to AI');
+          this._startGame(GameMode.VS_AI, this._selectedLevel);
         }
       },
       (matchState) => {
-        const statusEl = document.getElementById('mm-status');
         if (!statusEl) return;
         const labels = {
-          [MatchState.SEARCHING]: 'Suche Mitspieler...',
-          [MatchState.MATCHED]:   'Spieler gefunden!',
-          [MatchState.FALLBACK]:  'Kein Spieler — starte KI-Match...',
+          [MatchState.SEARCHING]: '🔍 Suche Mitspieler...',
+          [MatchState.MATCHED]:   '✅ Spieler gefunden!',
+          [MatchState.FALLBACK]:  '🤖 Kein Spieler — starte KI-Match...',
           [MatchState.CANCELLED]: 'Abgebrochen',
         };
         statusEl.textContent = labels[matchState] || '';
       }
     );
-    this.matchmaking.search();
+    this.matchmaking.search(this.playerName);
 
     // Cancel button
     const cancelBtn = document.getElementById('btn-mm-cancel');
@@ -243,6 +321,90 @@ class Game {
       if (overlay) overlay.style.display = 'none';
       this._showScreen('menu');
     };
+  }
+
+  /**
+   * Start an online game using the matched WebSocket connection.
+   * @param {{ ws: WebSocket, isHost: boolean, peerName: string }} matchInfo
+   */
+  _startOnlineGame(matchInfo) {
+    // Cleanup any existing game sync
+    if (this.gameSync) { this.gameSync.close(); this.gameSync = null; }
+
+    // Start game in online-versus mode (no AI controllers)
+    this._startGame(GameMode.ONLINE_VERSUS, this._selectedLevel);
+
+    // Rename the remote player (player2) to the peer's name
+    if (this.player2) this.player2.name = matchInfo.peerName;
+
+    // Set up game sync
+    this.gameSync = new GameSync(
+      matchInfo.ws,
+      matchInfo.isHost,
+      (state) => this._applyPeerState(state),
+      (evt)   => this._handlePeerEvent(evt),
+      ()      => this._onPeerLeft(),
+    );
+
+    // Show online status in HUD
+    this.hud.setConnectionStatus('online', `🌐 ${matchInfo.peerName}`);
+  }
+
+  /** Apply received peer state to player2 mesh. */
+  _applyPeerState(state) {
+    const p2 = this.player2;
+    if (!p2) return;
+
+    // Position & velocity
+    if (state.pos) p2.position.set(state.pos[0], state.pos[1], state.pos[2]);
+    if (state.vel) p2.velocity.set(state.vel[0], state.vel[1], state.vel[2]);
+    if (typeof state.facing   === 'number') p2.facingAngle = state.facing;
+    if (typeof state.isJumping === 'boolean') p2.isJumping = state.isJumping;
+    if (typeof state.isBuried  === 'boolean') {
+      p2.isBuried = state.isBuried;
+      p2.abilities.isBuried = state.isBuried;
+    }
+
+    // Health — only decrease (peer is authoritative about own health)
+    if (typeof state.health === 'number' && state.health < p2.health) {
+      p2.health = state.health;
+    }
+    if (state.isAlive === false && p2.isAlive) {
+      p2.isAlive = false;
+      p2._dying  = true;
+    }
+
+    // Sync weapon model
+    if (state.weaponKey !== p2._lastOnlineWeaponKey) {
+      p2._lastOnlineWeaponKey = state.weaponKey;
+      const w = state.weaponKey ? { key: state.weaponKey, name: state.weaponKey } : null;
+      p2.showWeaponModel(w);
+    }
+  }
+
+  /** Handle game events from peer (e.g. fire, hit). */
+  _handlePeerEvent(evt) {
+    if (evt.action === 'hit' && this.player1) {
+      // Peer's projectile hit our player1 — apply damage
+      const dmg = Number(evt.damage) || 0;
+      if (dmg > 0) {
+        this.player1.takeDamage(dmg);
+        this.hud.showHit('Online-Gegner', dmg);
+      }
+    }
+  }
+
+  /** Called when the peer disconnects mid-game. */
+  _onPeerLeft() {
+    if (!this.state.isPlaying) return;
+    this.hud.setConnectionStatus('offline', '❌ Gegner getrennt');
+    // Show a notice and end the game after a short delay
+    this._showPickupMsg('System', 'Gegner hat das Spiel verlassen!');
+    setTimeout(() => {
+      if (this.state.isPlaying) {
+        this._endGame(this.player1?.name || 'Spieler 1');
+      }
+    }, 2000);
   }
 
   // ── Skins modal ───────────────────────────────────────────────────────────────
@@ -305,6 +467,7 @@ class Game {
       def.glitter    || false,
       def.rainbow    || false,
       def.wrackDeco  || false,
+      def.unicornHorn || false,
     );
   }
 
@@ -339,8 +502,12 @@ class Game {
     const skins = this.trophies.getAllShopSkinsWithStatus();
 
     list.innerHTML = skins.map(skin => {
-      const swatchClass = skin.key === 'rainbow' ? 'swatch-rainbow' : 'swatch-wrack';
-      const swatchIcon  = skin.key === 'wrack' ? '🪸' : '🌈';
+      const swatchClass = skin.key === 'rainbow'  ? 'swatch-rainbow'
+                        : skin.key === 'unicorn'  ? 'swatch-unicorn'
+                        : 'swatch-wrack';
+      const swatchIcon  = skin.key === 'wrack'    ? '🪸'
+                        : skin.key === 'unicorn'  ? '🦄'
+                        : '🌈';
       const priceStr    = `🪙 ${skin.price.toLocaleString('de-DE')} Taler`;
 
       let buyBtn = '';
@@ -418,10 +585,12 @@ class Game {
     const spawns     = levelDef.spawnPositions || [];
     const diff       = this.state.difficulty;
     const isMultiAI  = mode === GameMode.VS_MULTI_AI;
+    const isOnline   = mode === GameMode.ONLINE_VERSUS;
 
     // ── Player 1 — human (color may be overridden by skin) ──────────────────
+    const p1Name = this.playerName || 'Spieler 1';
     this.player1 = new Character({
-      name:     'Spieler 1',
+      name:     p1Name,
       color:    0x2255ff,
       position: [...(spawns[0] || [-12, 0, 0])],
     });
@@ -435,13 +604,13 @@ class Game {
     const numAI      = isMultiAI ? 4
                      : mode === GameMode.VS_TWO_AI ? 2
                      : mode === GameMode.VS_AI ? 1
-                     : 1; // LOCAL_VERSUS → still need p2 slot
+                     : 1; // LOCAL_VERSUS / ONLINE_VERSUS → still need p2 slot
 
     const aiChars   = [];
     const aiRefs    = ['player2', 'player3', 'player4', 'player5'];
 
     for (let i = 0; i < numAI; i++) {
-      const isHuman = mode === GameMode.LOCAL_VERSUS && i === 0;
+      const isHuman = (mode === GameMode.LOCAL_VERSUS || mode === GameMode.ONLINE_VERSUS) && i === 0;
       const name    = isHuman ? 'Spieler 2'
                     : mode === GameMode.VS_AI && i === 0 ? 'KI-Gegner'
                     : mode === GameMode.VS_TWO_AI ? `KI-Gegner ${i + 1}`
@@ -459,7 +628,8 @@ class Game {
 
     // ── AI controllers ───────────────────────────────────────────────────────
     this.aiList = [];
-    const aiStart = mode === GameMode.LOCAL_VERSUS ? 1 : 0;
+    // Skip AI for player2 in local/online versus, and skip all AI in online mode
+    const aiStart = (mode === GameMode.LOCAL_VERSUS || mode === GameMode.ONLINE_VERSUS) ? 1 : 0;
     for (let i = aiStart; i < aiChars.length; i++) {
       this.aiList.push(new AIController(aiChars[i], this.player1, diff));
     }
@@ -491,6 +661,13 @@ class Game {
   }
 
   _cleanupCharacters() {
+    // Close online sync if active
+    if (this.gameSync) {
+      this.gameSync.close();
+      this.gameSync = null;
+    }
+    this.hud.setConnectionStatus(null);
+
     for (const slot of ['player1', 'player2', 'player3', 'player4', 'player5']) {
       if (this[slot]) {
         this.world.scene.remove(this[slot].mesh);
@@ -804,7 +981,7 @@ class Game {
       this._useAbility(this.player1);
     }
 
-    // Player 2 — only in local-versus mode
+    // Player 2 — only in local-versus mode (online: controlled by GameSync)
     if (this.state.mode === GameMode.LOCAL_VERSUS && this.player2 && this.player2.isAlive) {
       const m2 = this.input.getMovement(PLAYER2_KEYS);
       this.player2.move(
@@ -857,6 +1034,21 @@ class Game {
 
     // Input
     this._processInput();
+
+    // Online: send local player state to peer
+    if (this.gameSync && this.player1) {
+      const p1 = this.player1;
+      this.gameSync.sendState({
+        pos:       [p1.position.x, p1.position.y, p1.position.z],
+        vel:       [p1.velocity.x, p1.velocity.y, p1.velocity.z],
+        facing:    p1.facingAngle,
+        health:    p1.health,
+        isAlive:   p1.isAlive,
+        isBuried:  p1.isBuried,
+        isJumping: p1.isJumping,
+        weaponKey: p1.weaponSlots.getActive()?.key || null,
+      });
+    }
 
     // AI controllers
     const allPlayers = [this.player1, this.player2, this.player3, this.player4, this.player5]
@@ -925,6 +1117,11 @@ class Game {
     // Jump-attack combat
     const jumpHits = this.combat.processCombat(allPlayers);
     jumpHits.forEach(h => {
+      // In online mode: if we landed on player2, send hit event; skip local damage
+      if (this.gameSync && h.target === this.player2 && h.attacker === this.player1) {
+        this.gameSync.sendEvent({ action: 'hit', damage: h.damage });
+        return;
+      }
       this.hud.showHit(h.attacker.name, h.damage);
       this._handleJumpHit(h);
     });
@@ -934,6 +1131,13 @@ class Game {
     const obsData    = this.obstacles.getObstacleData();
     const projHits   = this.projectiles.update(dt, chars, obsData);
     projHits.forEach(h => {
+      // In online mode: if our projectile hits player2 (remote peer), send hit event
+      // The peer applies it to their own player1 via _handlePeerEvent
+      if (this.gameSync && h.target === this.player2 && h.projectile.owner === this.player1) {
+        this.gameSync.sendEvent({ action: 'hit', damage: h.projectile.damage });
+        // Skip local damage on player2 — peer is authoritative about their own health
+        return;
+      }
       h.target.takeDamage(h.projectile.damage);
       this.hud.showHit(
         h.projectile.owner ? h.projectile.owner.name : 'Projektil',

@@ -4,10 +4,11 @@
  */
 
 export const GameMode = {
-  VS_AI:        'vs-ai',
-  VS_TWO_AI:    'vs-two-ai',
-  VS_MULTI_AI:  'vs-multi-ai',   // player vs 4 AI enemies simultaneously
-  LOCAL_VERSUS: 'local-versus',
+  VS_AI:          'vs-ai',
+  VS_TWO_AI:      'vs-two-ai',
+  VS_MULTI_AI:    'vs-multi-ai',     // player vs 4 AI enemies simultaneously
+  LOCAL_VERSUS:   'local-versus',    // 2 humans, split keyboard
+  ONLINE_VERSUS:  'online-versus',   // 2 humans, WebSocket relay
 };
 
 export const GameStatus = {

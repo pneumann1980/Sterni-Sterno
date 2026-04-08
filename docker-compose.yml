@@ -1,4 +1,6 @@
 services:
+
+  # Static game files — served by nginx on port 8090
   seestern-fighters:
     image: nginx:alpine
     container_name: seestern-fighters
@@ -7,4 +9,19 @@ services:
       - /mnt/user/appdata/seestern-fighters:/usr/share/nginx/html:ro
     ports:
       - "8090:80"    # Erreichbar unter http://UNRAID-IP:8090
+    restart: unless-stopped
+
+  # WebSocket matchmaking + relay server — Node.js on port 8091
+  seestern-server:
+    image: node:20-alpine
+    container_name: seestern-server
+    working_dir: /app
+    volumes:
+      # server/ subfolder aus dem gleichen appdata-Verzeichnis
+      - /mnt/user/appdata/seestern-fighters/server:/app
+    command: sh -c "npm install --omit=dev --prefer-offline 2>/dev/null; node server.js"
+    ports:
+      - "8091:8091"   # WebSocket erreichbar unter ws://UNRAID-IP:8091
+    environment:
+      - PORT=8091
     restart: unless-stopped

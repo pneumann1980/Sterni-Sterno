@@ -1,28 +1,45 @@
 /**
- * matchmaking.js
- * Simple WebSocket-based matchmaking with automatic AI fallback.
+ * matchmaking.js — v0.10
+ * WebSocket-based matchmaking with automatic AI fallback.
  *
  * Flow:
- *   1. connect() — attempts WebSocket to server
- *   2. Waits SEARCH_TIMEOUT seconds for a peer signal
- *   3. onMatch(isOnline)  — called with true  if a real player was found
- *                                          false if AI fallback kicks in
- *   4. cancel() — abort the search
+ *   1. search(playerName) — opens WebSocket, sends { type:'hello' }
+ *   2. Waits SEARCH_TIMEOUT ms for the server to pair two clients
+ *   3. onMatch(isOnline, matchInfo)
+ *        isOnline=true  → real player found; matchInfo = { ws, isHost, peerName }
+ *        isOnline=false → AI fallback; matchInfo = null
+ *   4. cancel() — abort without triggering callbacks
  *
- * Server protocol (JSON messages):
- *   client → server: { type: 'hello' }
- *   server → client: { type: 'matched', peerId: '...' }
- *   server → client: { type: 'waiting' }
+ * Server URL is resolved in this priority order:
+ *   1. ?ws=wss://... query parameter (manual override)
+ *   2. Auto-detect: same host as the game page, port 8091
  *
- * If no server is reachable the code falls back silently after SEARCH_TIMEOUT ms.
+ * Debug logging is written to console with [MM] prefix.
  */
 
-const SEARCH_TIMEOUT = 5000; // ms before AI fallback
-const WS_URL = (() => {
-  // Allow override via ?ws=wss://example.com in the URL
+const SEARCH_TIMEOUT = 12_000; // ms before AI fallback
+
+// ── WebSocket URL resolution ───────────────────────────────────────────────────
+
+function resolveWsUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('ws') || null; // null → always AI fallback
-})();
+  if (params.has('ws')) {
+    const override = params.get('ws');
+    console.log(`[MM] WS URL override: ${override}`);
+    return override;
+  }
+
+  // Auto-detect: same host, port 8091
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host  = window.location.hostname;
+  const url   = `${proto}//${host}:8091`;
+  console.log(`[MM] Auto-detected WS URL: ${url}`);
+  return url;
+}
+
+const WS_URL = resolveWsUrl();
+
+// ── MatchState ────────────────────────────────────────────────────────────────
 
 export const MatchState = {
   IDLE:      'idle',
@@ -32,13 +49,15 @@ export const MatchState = {
   CANCELLED: 'cancelled',
 };
 
+// ── MatchmakingClient ─────────────────────────────────────────────────────────
+
 export class MatchmakingClient {
   /**
-   * @param {function(boolean): void} onMatch
-   *   Called with true  when a real player is found
-   *   Called with false when falling back to AI
+   * @param {function(boolean, object|null): void} onMatch
+   *   Called with (true,  { ws, isHost, peerName }) when a real player is found
+   *   Called with (false, null)                     when falling back to AI
    * @param {function(string): void} [onStateChange]
-   *   Optional: called each time the MatchState changes
+   *   Optional callback called each time MatchState changes
    */
   constructor(onMatch, onStateChange) {
     this._onMatch       = onMatch;
@@ -50,90 +69,120 @@ export class MatchmakingClient {
 
   get state() { return this._state; }
 
-  // ── Public API ──────────────────────────────────────────────────────────────
+  // ── Public API ───────────────────────────────────────────────────────────────
 
   /**
-   * Start searching for a match. Safe to call multiple times; cancels any
-   * previous search first.
+   * Start searching. Safe to call multiple times; cancels any previous search.
+   * @param {string} playerName  Player's display name sent to the server
    */
-  search() {
+  search(playerName = 'Spieler') {
     this.cancel();
     this._setState(MatchState.SEARCHING);
+    console.log(`[MM] search() playerName="${playerName}" url="${WS_URL}"`);
 
-    // Arm fallback timer — fires whether WebSocket connects or not
     this._fallbackTimer = setTimeout(() => {
+      console.log('[MM] Timeout — falling back to AI');
       this._triggerFallback();
     }, SEARCH_TIMEOUT);
 
-    if (WS_URL) {
-      this._connectWebSocket();
-    }
-    // If no WS_URL the timer alone will fire the fallback
+    this._connectWebSocket(playerName);
   }
 
-  /** Abort the current search without triggering any match callback. */
+  /** Abort without triggering any callbacks. */
   cancel() {
     clearTimeout(this._fallbackTimer);
     this._fallbackTimer = null;
     if (this._ws) {
-      this._ws.onclose = null; // prevent fallback on explicit close
+      this._ws.onclose = null; // prevent fallback on intentional close
       this._ws.close();
       this._ws = null;
     }
     if (this._state === MatchState.SEARCHING) {
       this._setState(MatchState.CANCELLED);
+      console.log('[MM] Cancelled');
     }
   }
 
-  // ── Internal ────────────────────────────────────────────────────────────────
+  // ── Internal ─────────────────────────────────────────────────────────────────
 
-  _connectWebSocket() {
+  _connectWebSocket(playerName) {
+    let ws;
     try {
-      this._ws = new WebSocket(WS_URL);
-    } catch {
-      // Invalid URL — will fall back via timer
-      return;
+      ws = new WebSocket(WS_URL);
+      this._ws = ws;
+    } catch (e) {
+      console.error('[MM] Failed to create WebSocket:', e);
+      return; // will fall through to timer-based fallback
     }
 
-    this._ws.addEventListener('open', () => {
+    ws.addEventListener('open', () => {
       if (this._state !== MatchState.SEARCHING) return;
-      this._ws.send(JSON.stringify({ type: 'hello' }));
+      console.log('[MM] WS open — sending hello');
+      ws.send(JSON.stringify({ type: 'hello', playerName }));
     });
 
-    this._ws.addEventListener('message', (evt) => {
+    ws.addEventListener('message', (evt) => {
       if (this._state !== MatchState.SEARCHING) return;
-      try {
-        const msg = JSON.parse(evt.data);
-        if (msg.type === 'matched') {
-          this._triggerMatch(true);
-        }
-      } catch { /* ignore malformed messages */ }
+      let msg;
+      try { msg = JSON.parse(evt.data); }
+      catch { console.warn('[MM] Malformed message:', evt.data); return; }
+
+      console.log('[MM] Received:', msg.type, msg);
+
+      switch (msg.type) {
+        case 'waiting':
+          // Still queued — UI already shows "Suche..."
+          break;
+
+        case 'matched':
+          // Real player found — keep WS open for game sync
+          this._triggerMatch(true, {
+            ws,
+            isHost:   msg.isHost,
+            peerName: msg.peerName || 'Gegner',
+            roomId:   msg.roomId,
+          });
+          this._ws = null; // ownership transferred to caller
+          break;
+
+        case 'error':
+          console.warn('[MM] Server error:', msg.message);
+          break;
+
+        default:
+          console.log('[MM] Unhandled message type:', msg.type);
+      }
     });
 
-    this._ws.addEventListener('error', () => {
-      // Connection failed — fall through to timer-based fallback
+    ws.addEventListener('error', (err) => {
+      console.error('[MM] WebSocket error:', err);
+      // Let the fallback timer handle it — don't double-fire
     });
 
-    this._ws.addEventListener('close', () => {
-      this._ws = null;
+    ws.addEventListener('close', (evt) => {
+      console.log(`[MM] WS closed (code=${evt.code})`);
+      if (this._ws === ws) this._ws = null;
+      // If still searching, let the fallback timer fire naturally
     });
   }
 
-  _triggerMatch(isOnline) {
+  _triggerMatch(isOnline, matchInfo = null) {
     if (this._state !== MatchState.SEARCHING) return;
     clearTimeout(this._fallbackTimer);
     this._fallbackTimer = null;
-    if (this._ws && !isOnline) {
+
+    if (!isOnline && this._ws) {
       this._ws.onclose = null;
       this._ws.close();
       this._ws = null;
     }
+
     this._setState(isOnline ? MatchState.MATCHED : MatchState.FALLBACK);
-    this._onMatch(isOnline);
+    this._onMatch(isOnline, matchInfo);
   }
 
   _triggerFallback() {
-    this._triggerMatch(false);
+    this._triggerMatch(false, null);
   }
 
   _setState(s) {
