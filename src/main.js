@@ -707,8 +707,8 @@ class Game {
   _updateMenuStats() {
     const trophyEl = document.getElementById('menu-trophy-count');
     const coinEl   = document.getElementById('menu-coin-count');
-    if (trophyEl) trophyEl.textContent = this.trophies.getTrophies();
-    if (coinEl)   coinEl.textContent   = this.trophies.getCoins();
+    if (trophyEl) trophyEl.textContent = this.trophies.trophies;
+    if (coinEl)   coinEl.textContent   = this.trophies.coins;
   }
 
   _pause() {
