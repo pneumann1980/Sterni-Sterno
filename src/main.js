@@ -786,6 +786,7 @@ class Game {
    * Returns true if something was fired.
    */
   _fireActiveWeapon(character) {
+    if (!character.canFire) return false;  // no firing while buried
     const weapon = character.weaponSlots.getActive();
     if (!weapon || !weapon.isReady) return false;
 
@@ -860,6 +861,38 @@ class Game {
     }
     // No ability — fall back to weapon switch
     character.weaponSlots.nextSlot();
+  }
+
+  // ── Bury-Emerge AoE ─────────────────────────────────────────────────────────
+
+  _triggerBuryEmerge(character) {
+    const pos      = character.position.clone();
+    const def      = ABILITY_DEFS.einbuddeln;
+    const allChars = [this.player1, this.player2, this.player3, this.player4, this.player5].filter(Boolean);
+
+    allChars.forEach(target => {
+      if (target === character || !target.isAlive) return;
+      const dx   = target.position.x - pos.x;
+      const dz   = target.position.z - pos.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist >= def.emergeRadius) return;
+
+      const actualDmg = Math.min(target.health - 1, def.emergeDamage);
+      if (actualDmg > 0) {
+        target.takeDamage(actualDmg);
+        this.hud.showHit(character.name, actualDmg);
+      }
+
+      const nx = dist > 0.1 ? dx / dist : (Math.random() - 0.5);
+      const nz = dist > 0.1 ? dz / dist : (Math.random() - 0.5);
+      target.velocity.x += nx * def.emergeKnock;
+      target.velocity.z += nz * def.emergeKnock;
+      target.velocity.y  = Math.max(target.velocity.y, 5);
+      target.isOnGround  = false;
+    });
+
+    // Spawn a small sand-burst VFX ring
+    this._spawnNovaVFX(pos, def.emergeRadius * 0.6);
   }
 
   // ── Nova-Blast detonation ────────────────────────────────────────────────────
@@ -1112,6 +1145,10 @@ class Game {
 
       if (abilityEvent === 'nova_fire') {
         this._triggerNovaBlast(attacker);
+      }
+
+      if (abilityEvent === 'bury_emerge') {
+        this._triggerBuryEmerge(attacker);
       }
 
       // Sync buried state (ability manager is source of truth)

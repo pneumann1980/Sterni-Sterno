@@ -66,6 +66,12 @@ export class Character {
     this._wrackMeshes      = null;
     this._unicornMeshes    = null;
 
+    // Sand particle + ripple state (for Einbuddeln visual FX)
+    this._sandParticles = [];   // { mesh, vel, life, maxLife }
+    this._buryRipple    = null; // expanding ring while underground
+    this._rippleTimer   = 0;
+    this._prevBuried    = false;
+
     // Three.js mesh
     this._buildMesh();
     this.mesh.position.copy(this.position);
@@ -671,6 +677,16 @@ export class Character {
     if (this._weaponMount) {
       this._weaponMount.position.y = 0.4 + Math.sin(Date.now() * 0.003) * 0.06;
     }
+
+    // Detect bury state transitions → trigger sand burst
+    if (this.isBuried !== this._prevBuried) {
+      this._triggerSandBurst(this.isBuried);   // true = digging in, false = surfacing
+      this._prevBuried = this.isBuried;
+    }
+
+    // Update sand particles and ground ripple
+    this._updateSandParticles(dt);
+    this._updateGroundRipple(dt);
   }
 
   /**
@@ -690,5 +706,124 @@ export class Character {
         m.needsUpdate = true;
       });
     });
+  }
+
+  // ── Can-fire guard ──────────────────────────────────────────────────────────
+
+  /** Characters cannot fire weapons while buried underground. */
+  get canFire() { return !this.isBuried; }
+
+  // ── Sand particle FX (Einbuddeln) ────────────────────────────────────────────
+
+  /**
+   * Burst of sand/dirt particles when digging in or surfacing.
+   * @param {boolean} diggingIn  true = going underground, false = surfacing
+   */
+  _triggerSandBurst(diggingIn) {
+    const scene = this.mesh.parent;
+    if (!scene) return;
+
+    const count  = diggingIn ? 10 : 14;
+    const colors = [0xd4aa70, 0xb8860b, 0xcd853f, 0x8b7355, 0xc8a87a];
+
+    for (let i = 0; i < count; i++) {
+      const r   = 0.05 + Math.random() * 0.08;
+      const geo = new THREE.SphereGeometry(r, 4, 3);
+      const mat = new THREE.MeshBasicMaterial({
+        color:       colors[Math.floor(Math.random() * colors.length)],
+        transparent: true,
+        opacity:     0.9,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        this.position.x + (Math.random() - 0.5) * 0.6,
+        0.05,
+        this.position.z + (Math.random() - 0.5) * 0.6
+      );
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.5 + Math.random() * 3;
+      const vy    = diggingIn
+        ? (0.5 + Math.random() * 2)   // digging: smaller upward spray
+        : (2   + Math.random() * 4);  // surfacing: strong burst upward
+
+      scene.add(mesh);
+      this._sandParticles.push({
+        mesh,
+        vel:     { x: Math.cos(angle) * speed, y: vy, z: Math.sin(angle) * speed },
+        life:    0,
+        maxLife: 0.4 + Math.random() * 0.35,
+      });
+    }
+  }
+
+  _updateSandParticles(dt) {
+    if (this._sandParticles.length === 0) return;
+    const scene = this.mesh.parent;
+    const alive = [];
+    for (const p of this._sandParticles) {
+      p.life += dt;
+      const frac = p.life / p.maxLife;
+      if (frac >= 1) {
+        if (scene) scene.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        p.mesh.material.dispose();
+        continue;
+      }
+      p.vel.y -= 9 * dt;  // gravity
+      p.mesh.position.x += p.vel.x * dt;
+      p.mesh.position.y = Math.max(0.01, p.mesh.position.y + p.vel.y * dt);
+      p.mesh.position.z += p.vel.z * dt;
+      p.mesh.material.opacity = 0.85 * (1 - frac * frac);
+      alive.push(p);
+    }
+    this._sandParticles = alive;
+  }
+
+  // ── Ground ripple (pulsing ring visible while underground) ───────────────────
+
+  _updateGroundRipple(dt) {
+    if (!this.isBuried) {
+      if (this._buryRipple) {
+        const scene = this.mesh.parent;
+        if (scene) scene.remove(this._buryRipple);
+        this._buryRipple.geometry.dispose();
+        this._buryRipple.material.dispose();
+        this._buryRipple = null;
+      }
+      return;
+    }
+
+    // Create ripple on first buried frame
+    if (!this._buryRipple) {
+      const scene = this.mesh.parent;
+      if (!scene) return;
+      const geo = new THREE.RingGeometry(0.3, 0.9, 20);
+      const mat = new THREE.MeshBasicMaterial({
+        color:       0xd4aa70,
+        transparent: true,
+        opacity:     0.55,
+        side:        THREE.DoubleSide,
+      });
+      this._buryRipple = new THREE.Mesh(geo, mat);
+      this._buryRipple.rotation.x = -Math.PI / 2;
+      this._buryRipple.position.y = 0.02;
+      scene.add(this._buryRipple);
+      this._rippleTimer = 0;
+    }
+
+    this._rippleTimer += dt;
+
+    // Follow character XZ position
+    this._buryRipple.position.x = this.position.x;
+    this._buryRipple.position.z = this.position.z;
+
+    // Pulse scale and opacity to indicate movement underneath
+    const isMoving = Math.abs(this.velocity.x) > 0.3 || Math.abs(this.velocity.z) > 0.3;
+    const pulse    = Math.abs(Math.sin(this._rippleTimer * (isMoving ? 5 : 2.5)));
+    this._buryRipple.scale.setScalar(0.8 + 0.6 * pulse);
+    this._buryRipple.material.opacity = isMoving
+      ? 0.4 + 0.3 * pulse
+      : 0.2 + 0.15 * pulse;
   }
 }

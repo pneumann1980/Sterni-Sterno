@@ -4,46 +4,52 @@
  *
  * Stachel-Aura   — passive aura (15 s), damages nearby enemies each tick
  * Nova-Explosion — hold ability button 1 s to charge, AOE knockback + damage, one-use
- * Sand-Tarnung   — press ability button to bury underground; jump or nova hit to exit
+ * Sand-Tarnung   — press ability button to bury; emerge with small AoE; 12 s cooldown
  */
 
 export const ABILITY_DEFS = {
   stachelAura: {
     key:        'stachelAura',
     name:       'Stachel-Aura',
-    duration:   15,      // seconds the aura stays active
-    damage:     8,       // HP per damage tick
-    damageTick: 0.45,    // seconds between ticks
-    auraRadius: 2.0,     // units
+    duration:   15,
+    damage:     8,
+    damageTick: 0.45,
+    auraRadius: 2.0,
   },
   novaBlast: {
     key:         'novaBlast',
     name:        'Nova-Explosion',
-    chargeTime:  1.0,    // seconds to hold before firing
-    damage:      80,     // leaves targets at min 1 HP
-    blastRadius: 5.0,    // units
-    knockback:   18,     // velocity impulse
+    chargeTime:  1.0,
+    damage:      80,
+    blastRadius: 5.0,
+    knockback:   18,
   },
   einbuddeln: {
-    key:  'einbuddeln',
-    name: 'Sand-Tarnung',
+    key:          'einbuddeln',
+    name:         'Sand-Tarnung',
+    cooldown:     12,    // seconds before can dig again after surfacing
+    emergeRadius: 3.0,   // AoE radius on surface
+    emergeDamage: 25,    // damage to enemies within emergeRadius
+    emergeKnock:  10,    // knockback impulse on surface
   },
 };
 
 export class AbilityManager {
   constructor() {
-    // ── Stachel-Aura (timed passive) ─────────────────────────────────────────
-    this._auraTimer = 0;    // > 0 = active
-    this._auraTick  = 0;    // countdown to next damage tick
+    // ── Stachel-Aura ─────────────────────────────────────────────────────────
+    this._auraTimer = 0;
+    this._auraTick  = 0;
 
-    // ── Nova-Blast (one-use active) ───────────────────────────────────────────
+    // ── Nova-Blast ────────────────────────────────────────────────────────────
     this._novaReady    = false;
     this._novaCharging = false;
-    this._novaCharge   = 0;  // 0 → 1
+    this._novaCharge   = 0;
 
-    // ── Sand-Tarnung (toggle) ─────────────────────────────────────────────────
-    this._buriedReady = false;
-    this.isBuried     = false;
+    // ── Sand-Tarnung ──────────────────────────────────────────────────────────
+    this._buriedReady    = false;
+    this.isBuried        = false;
+    this._buryCooldown   = 0;    // counts down to 0 → re-grants ability
+    this._pendingEmerge  = false; // signals the game loop to trigger emerge AoE
   }
 
   // ── Grants ──────────────────────────────────────────────────────────────────
@@ -60,7 +66,10 @@ export class AbilityManager {
   }
 
   grantEinbuddeln() {
-    this._buriedReady = true;
+    // Only grant if not on cooldown and not already buried
+    if (!this.isBuried && this._buryCooldown <= 0) {
+      this._buriedReady = true;
+    }
   }
 
   // ── Queries ─────────────────────────────────────────────────────────────────
@@ -70,19 +79,40 @@ export class AbilityManager {
 
   get hasNovaBlast()       { return this._novaReady; }
   get isNovaCharging()     { return this._novaCharging; }
-  get novaChargeProgress() { return this._novaCharge; } // 0..1
+  get novaChargeProgress() { return this._novaCharge; }
 
   get hasEinbuddeln()      { return this._buriedReady; }
+  get buryCooldown()       { return this._buryCooldown; }
+  /** 0 = on cooldown, 1 = ready */
+  get buryCooldownProgress() {
+    const max = ABILITY_DEFS.einbuddeln.cooldown;
+    return Math.max(0, 1 - this._buryCooldown / max);
+  }
 
   // ── Per-frame update ─────────────────────────────────────────────────────────
 
   /**
    * Call once per frame. Returns:
-   *   'aura_tick' — aura damage should be applied this frame
-   *   'nova_fire' — nova charge is complete and should explode
-   *   null        — nothing special
+   *   'aura_tick'   — aura damage tick
+   *   'nova_fire'   — nova explodes
+   *   'bury_emerge' — player just surfaced → trigger AoE
+   *   null
    */
   update(dt) {
+    // Pending emerge event (set by toggleBury / ejectFromGround)
+    if (this._pendingEmerge) {
+      this._pendingEmerge = false;
+      return 'bury_emerge';
+    }
+
+    // Bury cooldown — re-grant when it expires
+    if (this._buryCooldown > 0) {
+      this._buryCooldown = Math.max(0, this._buryCooldown - dt);
+      if (this._buryCooldown <= 0) {
+        this._buriedReady = true; // ability re-granted after cooldown
+      }
+    }
+
     // Aura countdown
     if (this._auraTimer > 0) {
       this._auraTimer = Math.max(0, this._auraTimer - dt);
@@ -109,7 +139,6 @@ export class AbilityManager {
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
-  /** Start charging nova blast. Returns false if not available. */
   startNovaCharge() {
     if (!this._novaReady || this._novaCharging) return false;
     this._novaCharging = true;
@@ -119,22 +148,31 @@ export class AbilityManager {
 
   /**
    * Toggle buried state.
-   * @returns {boolean|null} new isBuried value, or null if no ability available
+   * Burying: immediately goes underground.
+   * Surfacing: starts cooldown, schedules emerge AoE event.
+   * @returns {boolean|null} new isBuried state, or null if unavailable
    */
   toggleBury() {
     if (!this._buriedReady) return null;
     this.isBuried = !this.isBuried;
     if (!this.isBuried) {
-      // Surfacing consumes the ability
-      this._buriedReady = false;
+      // Surfacing — start cooldown, schedule emerge event
+      this._buriedReady  = false;
+      this._buryCooldown = ABILITY_DEFS.einbuddeln.cooldown;
+      this._pendingEmerge = true;
     }
     return this.isBuried;
   }
 
-  /** Force-eject from ground (e.g. hit by nova). Consumes the ability. */
+  /**
+   * Force-eject from ground (e.g. hit by nova blast or jump key while buried).
+   * Also triggers emerge AoE.
+   */
   ejectFromGround() {
     if (!this.isBuried) return;
-    this.isBuried     = false;
-    this._buriedReady = false;
+    this.isBuried       = false;
+    this._buriedReady   = false;
+    this._buryCooldown  = ABILITY_DEFS.einbuddeln.cooldown;
+    this._pendingEmerge = true;
   }
 }
