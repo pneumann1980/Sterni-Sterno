@@ -31,7 +31,8 @@ import { PickupManager }      from './pickup.js';
 import { ObstacleSystem }     from './obstacles.js';
 import { LEVELS }             from './level.js';
 import { TouchInput }         from './touch.js';
-import { TrophyManager, SKIN_DEFS, SHOP_SKIN_DEFS } from './trophies.js';
+import { TrophyManager, SKIN_DEFS, SHOP_SKIN_DEFS, LOOTBOX_SKIN_DEFS } from './trophies.js';
+import { LootboxGenerator, LOOTBOX_PRICE, LOOTBOX_SLOTS } from './lootbox.js';
 import { MatchmakingClient, MatchState } from './matchmaking.js';
 import { GameSync } from './gamesync.js';
 
@@ -66,6 +67,7 @@ class Game {
     this.pickups     = new PickupManager(this.world.scene);
     this.projectiles = new ProjectileManager(this.world.scene);
     this.trophies    = new TrophyManager();
+    this._lootbox    = new LootboxGenerator(this.trophies);
     this.matchmaking = null; // created on demand
     this.gameSync    = null; // active GameSync instance (online mode only)
 
@@ -431,18 +433,19 @@ class Game {
   _renderSkinsModal() {
     const list = document.getElementById('skins-list');
     if (!list) return;
-    const skins = this.trophies.getAllSkinsWithStatus();
 
-    list.innerHTML = skins.map(skin => {
-      const locked    = !skin.unlocked;
-      const activeTag = skin.active ? ' (Aktiv)' : '';
-      const lockTag   = locked
+    // ── Trophy-gated skins ────────────────────────────────────────────────────
+    const trophySkins = this.trophies.getAllSkinsWithStatus();
+    const trophyHTML  = trophySkins.map(skin => {
+      const locked      = !skin.unlocked;
+      const activeTag   = skin.active ? ' (Aktiv)' : '';
+      const lockTag     = locked
         ? `<span class="skin-lock">🔒 ${skin.requiredTrophies} 🏆 benötigt</span>`
         : '';
       const swatchColor = skin.color ? `#${skin.color.toString(16).padStart(6, '0')}` : '#2255ff';
       return `
         <div class="skin-card${skin.active ? ' skin-active' : ''}${locked ? ' skin-locked' : ''}"
-             data-key="${skin.key}">
+             data-key="${skin.key}" data-type="trophy">
           <div class="skin-swatch" style="background:${swatchColor}">
             ${skin.glitter ? '<div class="skin-glitter">✦</div>' : ''}
           </div>
@@ -452,19 +455,57 @@ class Game {
             ${lockTag}
           </div>
           ${locked ? '' : `<button class="btn skin-equip-btn${skin.active ? ' skin-active-btn' : ''}"
-            data-key="${skin.key}">${skin.active ? 'Ausgerüstet' : 'Ausrüsten'}</button>`}
-        </div>
-      `;
+            data-key="${skin.key}" data-type="trophy">${skin.active ? 'Ausgerüstet' : 'Ausrüsten'}</button>`}
+        </div>`;
     }).join('');
 
-    // Bind equip buttons
-    list.querySelectorAll('.skin-equip-btn').forEach(btn => {
+    // ── Lootbox skins (all, greyed out if unowned) ────────────────────────────
+    const lootboxSkins = this.trophies.getAllLootboxSkinsWithStatus();
+    const lootboxHTML  = lootboxSkins.map(skin => {
+      const locked      = !skin.owned;
+      const activeTag   = skin.active ? ' (Aktiv)' : '';
+      const lockTag     = locked
+        ? `<span class="skin-lock">📦 Aus der Seesternbox</span>`
+        : '';
+      const swatchColor = skin.color ? `#${skin.color.toString(16).padStart(6, '0')}` : '#2255ff';
+      return `
+        <div class="skin-card${skin.active ? ' skin-active' : ''}${locked ? ' skin-locked' : ''}"
+             data-key="${skin.key}" data-type="lootbox">
+          <div class="skin-swatch" style="background:${locked ? '#111' : swatchColor}">
+            ${locked ? '❓' : (skin.glitter ? '<div class="skin-glitter">✦</div>' : '')}
+          </div>
+          <div class="skin-info">
+            <div class="skin-name">${locked ? '???' : skin.name}${activeTag}</div>
+            <div class="skin-desc">${locked ? 'Unbekannter Seesternbox-Skin' : skin.description}</div>
+            ${lockTag}
+          </div>
+          ${locked ? '' : `<button class="btn skin-equip-btn${skin.active ? ' skin-active-btn' : ''}"
+            data-key="${skin.key}" data-type="lootbox">${skin.active ? 'Ausgerüstet' : 'Ausrüsten'}</button>`}
+        </div>`;
+    }).join('');
+
+    list.innerHTML = trophyHTML
+      + `<div class="shop-section-label" style="margin-top:14px">📦 Seesternbox-Skins</div>`
+      + lootboxHTML;
+
+    // Bind equip buttons — trophy skins
+    list.querySelectorAll('.skin-equip-btn[data-type="trophy"]').forEach(btn => {
       btn.addEventListener('click', () => {
         const key = btn.dataset.key;
         if (this.trophies.setSkin(key)) {
-          // Apply to player1 immediately if in game
           if (this.player1) this._applySkinToCharacter(this.player1);
-          this._renderSkinsModal(); // re-render to update active state
+          this._renderSkinsModal();
+        }
+      });
+    });
+
+    // Bind equip buttons — lootbox skins
+    list.querySelectorAll('.skin-equip-btn[data-type="lootbox"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.key;
+        if (this.trophies.setLootboxSkin(key)) {
+          if (this.player1) this._applySkinToCharacter(this.player1);
+          this._renderSkinsModal();
         }
       });
     });
@@ -482,7 +523,7 @@ class Game {
   }
 
   _showUnlockNotification(skinKey) {
-    const def = SKIN_DEFS[skinKey] || SHOP_SKIN_DEFS[skinKey];
+    const def = SKIN_DEFS[skinKey] || SHOP_SKIN_DEFS[skinKey] || LOOTBOX_SKIN_DEFS[skinKey];
     if (!def) return;
     const el = document.getElementById('unlock-toast');
     if (!el) return;
@@ -509,30 +550,51 @@ class Game {
 
     const list = document.getElementById('shop-list');
     if (!list) return;
-    const skins = this.trophies.getAllShopSkinsWithStatus();
 
-    list.innerHTML = skins.map(skin => {
-      const swatchClass = skin.key === 'rainbow'  ? 'swatch-rainbow'
-                        : skin.key === 'unicorn'  ? 'swatch-unicorn'
+    const canAffordBox = this.trophies.coins >= LOOTBOX_PRICE;
+    const skins        = this.trophies.getAllShopSkinsWithStatus();
+
+    // ── Seesternbox card (top of shop) ────────────────────────────────────────
+    const boxCard = `
+      <div class="lb-box-card-shop">
+        <div class="lb-box-shop-icon">📦</div>
+        <div class="lb-box-shop-info">
+          <div class="lb-box-shop-title">🌟 Seesternbox</div>
+          <div class="lb-box-shop-desc">
+            6 Belohnungen · 4 % Chance auf exklusive Box-Skins<br>
+            Enthält: Unterseetaler oder seltene Seestern-Skins
+          </div>
+          <div class="lb-box-shop-price">🪙 ${LOOTBOX_PRICE.toLocaleString('de-DE')} Unterseetaler</div>
+        </div>
+        <button class="lb-box-buy-btn" id="lb-shop-buy-btn"${canAffordBox ? '' : ' disabled'}>
+          ${canAffordBox ? '✨ Kaufen' : '💸 Zu wenig'}
+        </button>
+      </div>
+      <div class="shop-section-label">🛒 Direkt kaufen</div>
+    `;
+
+    // ── Regular shop skins ────────────────────────────────────────────────────
+    const skinCards = skins.map(skin => {
+      const swatchClass = skin.key === 'rainbow' ? 'swatch-rainbow'
+                        : skin.key === 'unicorn' ? 'swatch-unicorn'
                         : 'swatch-wrack';
-      const swatchIcon  = skin.key === 'wrack'    ? '🪸'
-                        : skin.key === 'unicorn'  ? '🦄'
+      const swatchIcon  = skin.key === 'wrack'   ? '🪸'
+                        : skin.key === 'unicorn' ? '🦄'
                         : '🌈';
       const priceStr    = `🪙 ${skin.price.toLocaleString('de-DE')} Taler`;
 
       let buyBtn = '';
       if (!skin.owned) {
-        const disabled = skin.canAfford ? '' : ' disabled';
-        const label    = skin.canAfford ? `Kaufen (${priceStr})` : `Zu wenig Taler (${priceStr})`;
-        buyBtn = `<button class="shop-buy-btn" data-key="${skin.key}"${disabled}>${label}</button>`;
+        const dis   = skin.canAfford ? '' : ' disabled';
+        const label = skin.canAfford ? `Kaufen (${priceStr})` : `Zu wenig Taler (${priceStr})`;
+        buyBtn = `<button class="shop-buy-btn" data-key="${skin.key}"${dis}>${label}</button>`;
       }
-
       const equipBtnClass = skin.active ? 'shop-equip-btn shop-active-btn' : 'shop-equip-btn';
-      const equipLabel    = skin.active ? '✓ Ausgerüstet' : 'Ausrüsten';
-      const equipBtn      = skin.owned
-        ? `<button class="${equipBtnClass}" data-key="${skin.key}" data-action="equip">${equipLabel}</button>`
+      const equipBtn = skin.owned
+        ? `<button class="${equipBtnClass}" data-key="${skin.key}" data-action="equip">
+             ${skin.active ? '✓ Ausgerüstet' : 'Ausrüsten'}
+           </button>`
         : '';
-
       const ownedTag = skin.owned
         ? `<span style="font-size:11px;color:#44ee88;display:block;margin-top:5px">✓ Gekauft</span>`
         : '';
@@ -547,28 +609,32 @@ class Game {
             <div class="shop-price">${priceStr}</div>
             ${ownedTag}
           </div>
-          <div class="shop-btn-col">
-            ${buyBtn}
-            ${equipBtn}
-          </div>
+          <div class="shop-btn-col">${buyBtn}${equipBtn}</div>
         </div>
       `;
     }).join('');
 
-    // Bind buy buttons
+    list.innerHTML = boxCard + skinCards;
+
+    // Bind Seesternbox buy button
+    const boxBtn = document.getElementById('lb-shop-buy-btn');
+    if (boxBtn && !boxBtn.disabled) {
+      boxBtn.addEventListener('click', () => this._buySeesternbox());
+    }
+
+    // Bind shop-skin buy buttons
     list.querySelectorAll('.shop-buy-btn:not([disabled])').forEach(btn => {
       btn.addEventListener('click', () => {
         const key    = btn.dataset.key;
         const result = this.trophies.buyShopSkin(key);
         if (result === 'ok') {
-          // Flash the card
           const card = document.getElementById(`shop-card-${key}`);
           if (card) {
             card.classList.add('buy-flash');
             setTimeout(() => card.classList.remove('buy-flash'), 700);
           }
           this._showUnlockNotification(key);
-          this._renderShopModal(); // re-render
+          this._renderShopModal();
         }
       });
     });
@@ -583,6 +649,164 @@ class Game {
         }
       });
     });
+  }
+
+  // ── Seesternbox purchase & opening flow ──────────────────────────────────────
+
+  _buySeesternbox() {
+    if (!this.trophies.spendCoins(LOOTBOX_PRICE)) return;
+    this._updateMenuStats();
+    const rewards = this._lootbox.generateRewards();
+    this._closeShopModal();
+    this._openLootboxOverlay(rewards);
+  }
+
+  _openLootboxOverlay(rewards) {
+    const overlay = document.getElementById('lootbox-overlay');
+    if (!overlay) return;
+
+    // Reset to phase 1
+    document.getElementById('lb-phase-open').style.display    = 'flex';
+    document.getElementById('lb-phase-slots').style.display   = 'none';
+    document.getElementById('lb-phase-summary').style.display = 'none';
+
+    // Refresh coin counter inside the overlay
+    const lbCoins = document.getElementById('lb-coin-count');
+    if (lbCoins) lbCoins.textContent = this.trophies.coins.toLocaleString('de-DE');
+
+    // Remove lingering animation classes
+    const boxArt = document.getElementById('lb-box-art');
+    if (boxArt) boxArt.classList.remove('lb-box-opening');
+
+    overlay.style.display = 'flex';
+
+    // Wire open button (replace clone to clear old listeners)
+    const oldBtn = document.getElementById('lb-btn-open');
+    const newBtn = oldBtn.cloneNode(true);
+    oldBtn.replaceWith(newBtn);
+    newBtn.addEventListener('click', () => this._startLootboxReveal(rewards));
+  }
+
+  _startLootboxReveal(rewards) {
+    const boxArt = document.getElementById('lb-box-art');
+    if (boxArt) boxArt.classList.add('lb-box-opening');
+
+    setTimeout(() => {
+      document.getElementById('lb-phase-open').style.display    = 'none';
+      document.getElementById('lb-phase-slots').style.display   = 'flex';
+      this._buildLootboxSlots(rewards.length);
+      this._revealNextSlot(rewards, 0);
+    }, 650);
+  }
+
+  _buildLootboxSlots(count) {
+    const grid = document.getElementById('lb-slots-grid');
+    grid.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'lb-slot lb-slot-waiting';
+      slot.id        = `lb-slot-${i}`;
+      slot.innerHTML = `<div class="lb-slot-question">?</div>`;
+      grid.appendChild(slot);
+    }
+  }
+
+  _revealNextSlot(rewards, index) {
+    if (index >= rewards.length) {
+      setTimeout(() => this._showLootboxSummary(rewards), 900);
+      return;
+    }
+
+    const reward = rewards[index];
+    const slot   = document.getElementById(`lb-slot-${index}`);
+    if (!slot) return;
+
+    // Apply reward to persistent state immediately
+    if (reward.type === 'coins') {
+      this.trophies.addCoins(reward.amount);
+    } else if (reward.type === 'skin') {
+      this.trophies.unlockLootboxSkin(reward.skinKey);
+    }
+    this._updateMenuStats();
+    if (this.state.isPlaying) this.hud.updateCoins(this.trophies.coins);
+
+    // Update overlay coin counter
+    const lbCoins = document.getElementById('lb-coin-count');
+    if (lbCoins) lbCoins.textContent = this.trophies.coins.toLocaleString('de-DE');
+
+    // Reveal animation
+    slot.classList.remove('lb-slot-waiting');
+    slot.classList.add('lb-slot-revealing');
+
+    if (reward.type === 'coins') {
+      slot.innerHTML = `
+        <div class="lb-slot-coin-content">
+          <div class="lb-slot-coin-icon">🪙</div>
+          <div class="lb-slot-amount">+${reward.amount.toLocaleString('de-DE')}</div>
+        </div>`;
+      slot.classList.add('lb-slot-coin');
+    } else {
+      const def      = reward.skinDef;
+      const hexColor = def.color ? '#' + def.color.toString(16).padStart(6, '0') : '#4488ff';
+      slot.innerHTML = `
+        <div class="lb-slot-skin-content">
+          <div class="lb-slot-skin-swatch" style="background:${hexColor}">
+            ${def.glitter ? '✦' : '★'}
+          </div>
+          <div class="lb-slot-skin-name">${def.name}</div>
+          <div class="lb-slot-new-badge">✨ NEU!</div>
+        </div>`;
+      slot.classList.add('lb-slot-skin');
+    }
+
+    setTimeout(() => this._revealNextSlot(rewards, index + 1), 750);
+  }
+
+  _showLootboxSummary(rewards) {
+    document.getElementById('lb-phase-slots').style.display   = 'none';
+    const summary = document.getElementById('lb-phase-summary');
+    summary.style.display = 'flex';
+
+    const totalCoins = rewards
+      .filter(r => r.type === 'coins')
+      .reduce((s, r) => s + r.amount, 0);
+    const skins = rewards.filter(r => r.type === 'skin');
+
+    let html = `<div class="lb-summary-coins">🪙 +${totalCoins.toLocaleString('de-DE')} Unterseetaler</div>`;
+    if (skins.length > 0) {
+      html += `<div class="lb-summary-skins">`;
+      skins.forEach(s => {
+        const hexColor = s.skinDef.color
+          ? '#' + s.skinDef.color.toString(16).padStart(6, '0')
+          : '#4488ff';
+        html += `
+          <div class="lb-summary-skin-item">
+            <div class="lb-sum-swatch" style="background:${hexColor}">
+              ${s.skinDef.glitter ? '✦' : ''}
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:800;color:#FFE566">${s.skinDef.name}</div>
+              <div style="font-size:11px;color:#aa9944">Neuer Skin freigeschaltet!</div>
+            </div>
+          </div>`;
+      });
+      html += `</div>`;
+    }
+
+    document.getElementById('lb-summary-content').innerHTML = html;
+
+    // Wire close button fresh
+    const oldBtn = document.getElementById('lb-btn-close');
+    const newBtn = oldBtn.cloneNode(true);
+    oldBtn.replaceWith(newBtn);
+    newBtn.addEventListener('click', () => this._closeLootboxOverlay());
+  }
+
+  _closeLootboxOverlay() {
+    const overlay = document.getElementById('lootbox-overlay');
+    if (overlay) overlay.style.display = 'none';
+    // Reopen shop so the player can buy another box
+    this._openShopModal();
   }
 
   // ── Game flow ───────────────────────────────────────────────────────────────
