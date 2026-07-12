@@ -9,7 +9,7 @@
  * Protocol (JSON over WebSocket):
  *
  *   Client → Server:
- *     { type:'hello',     playerName:'...' }
+ *     { type:'hello',     playerName:'...', trophies:n, lifetimeCredits:n }
  *     { type:'state',     pos:[x,y,z], vel:[vx,vy,vz], facing:f,
  *                         health:h, isAlive:b, isBuried:b, isJumping:b,
  *                         weaponKey:'...' }
@@ -19,7 +19,8 @@
  *
  *   Server → Client:
  *     { type:'waiting' }
- *     { type:'matched',   roomId:'...', isHost:b, peerName:'...' }
+ *     { type:'matched',   roomId:'...', isHost:b, peerName:'...',
+ *                         peerTrophies:n, peerLifetimeCredits:n }
  *     { type:'peer_state', ...same fields as state... }
  *     { type:'peer_event', ...same fields as event... }
  *     { type:'peer_left' }
@@ -97,8 +98,12 @@ function handleMessage(ws, msg) {
   switch (msg.type) {
 
     case 'hello': {
-      // Register player name and try to match
-      ws.playerName = sanitizeName(msg.playerName);
+      // Register player name + profile stats and try to match.
+      // Stats are sanitized here so peers only ever see server-validated
+      // values (used for the post-match opponent info panel).
+      ws.playerName      = sanitizeName(msg.playerName);
+      ws.trophies        = sanitizeStat(msg.trophies);
+      ws.lifetimeCredits = sanitizeStat(msg.lifetimeCredits);
       console.log(`[hello] Client ${ws.clientId} name="${ws.playerName}", waiting=${waiting.length}`);
 
       if (waiting.length > 0) {
@@ -146,16 +151,20 @@ function createRoom(host, guest) {
   console.log(`[room] Created room "${roomId}": ${host.playerName} (host) vs ${guest.playerName}`);
 
   send(host, {
-    type:      'matched',
+    type:                'matched',
     roomId,
-    isHost:    true,
-    peerName:  guest.playerName,
+    isHost:              true,
+    peerName:            guest.playerName,
+    peerTrophies:        guest.trophies        || 0,
+    peerLifetimeCredits: guest.lifetimeCredits || 0,
   });
   send(guest, {
-    type:      'matched',
+    type:                'matched',
     roomId,
-    isHost:    false,
-    peerName:  host.playerName,
+    isHost:              false,
+    peerName:            host.playerName,
+    peerTrophies:        host.trophies        || 0,
+    peerLifetimeCredits: host.lifetimeCredits || 0,
   });
 }
 
@@ -195,4 +204,11 @@ function send(ws, obj) {
 function sanitizeName(raw) {
   if (typeof raw !== 'string') return 'Spieler';
   return raw.trim().slice(0, 20) || 'Spieler';
+}
+
+/** Clamp a client-reported stat to a sane non-negative integer. */
+function sanitizeStat(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(Math.floor(n), 10_000_000);
 }

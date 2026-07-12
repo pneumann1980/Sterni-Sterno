@@ -43,9 +43,16 @@ export class GameState {
   resume() { this.status = GameStatus.PLAYING;   }
   toMenu() { this.status = GameStatus.MENU;       }
 
+  /**
+   * End the current match. Idempotent: duplicate / concurrent match-end
+   * events are ignored so rewards can never be granted twice per match.
+   * @returns {boolean} true if the match was ended by THIS call
+   */
   endGame(winnerName) {
+    if (this.status === GameStatus.GAME_OVER) return false;
     this.status = GameStatus.GAME_OVER;
     this.winner = winnerName;
+    return true;
   }
 
   nextLevel() {

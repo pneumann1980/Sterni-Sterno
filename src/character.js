@@ -65,6 +65,8 @@ export class Character {
     this._rainbowHue       = 0;
     this._wrackMeshes      = null;
     this._unicornMeshes    = null;
+    this._splitActive      = false;   // vertical split skin (e.g. Sterni)
+    this._splitEmissive    = color;   // emissive hex while split is active
 
     // Sand particle + ripple state (for Einbuddeln visual FX)
     this._sandParticles = [];   // { mesh, vel, life, maxLife }
@@ -130,9 +132,10 @@ export class Character {
       this.armMeshes.push(armGroup);
     }
 
-    // Eyes
+    // Eyes — refs kept so skins (e.g. Sterni) can reposition them
     const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a22 });
+    this._eyeMeshes = [];
     for (const xOff of [-0.18, 0.18]) {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.10, 8, 6), eyeMat);
       eye.position.set(xOff, 0.15, 0.52);
@@ -140,6 +143,7 @@ export class Character {
       const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.055, 5, 4), pupilMat);
       pupil.position.set(xOff + 0.02, 0.15, 0.58);
       this.mesh.add(pupil);
+      this._eyeMeshes.push({ eye, pupil, baseEyeX: xOff, basePupilX: xOff + 0.02 });
     }
 
     // Weapon mount
@@ -173,20 +177,31 @@ export class Character {
 
   /**
    * Apply a skin to this character.
-   * @param {number|null} color    — hex color, or null to keep the original
+   * @param {number|null} color      — hex color, or null to keep the original
    * @param {boolean}     glitter
-   * @param {boolean}     rainbow  — animated rainbow cycling
-   * @param {boolean}     wrackDeco — wreck decorations (algae, barnacles)
+   * @param {boolean}     rainbow    — animated rainbow cycling
+   * @param {boolean}     wrackDeco  — wreck decorations (algae, barnacles)
+   * @param {boolean}     unicornHorn
+   * @param {object|null} splitColors — {left, right} hex colors for a vertical
+   *                                    half/half body split (e.g. Sterni skin)
+   * @param {object|null} splitEyes   — {offsets:[x1,x2]} eye x-offsets while
+   *                                    the split skin is active
    */
-  applySkinColor(color, glitter, rainbow = false, wrackDeco = false, unicornHorn = false) {
+  applySkinColor(color, glitter, rainbow = false, wrackDeco = false,
+                 unicornHorn = false, splitColors = null, splitEyes = null) {
     this._rainbowActive = rainbow;
-    if (!rainbow) {
-      const c = color !== null ? color : this.color;
-      this.bodyMat.color.setHex(c);
-      this.bodyMat.emissive.setHex(c);
-      const tipColor = new THREE.Color(c).multiplyScalar(0.65);
-      this.tipMat.color.copy(tipColor);
-      this.tipMat.emissive.copy(tipColor);
+    if (splitColors) {
+      this._applySplitSkin(splitColors, splitEyes);
+    } else {
+      this._removeSplitSkin();
+      if (!rainbow) {
+        const c = color !== null ? color : this.color;
+        this.bodyMat.color.setHex(c);
+        this.bodyMat.emissive.setHex(c);
+        const tipColor = new THREE.Color(c).multiplyScalar(0.65);
+        this.tipMat.color.copy(tipColor);
+        this.tipMat.emissive.copy(tipColor);
+      }
     }
     // Don't overwrite this.color — it still drives hit-flash reset target
 
@@ -198,6 +213,81 @@ export class Character {
 
     if (unicornHorn) this._addUnicornDeco();
     else             this._removeUnicornDeco();
+  }
+
+  // ── Split skin (vertical half/half body, e.g. Sterni) ──────────────────────
+
+  /**
+   * Bake per-vertex colors so the body + arms are split exactly along the
+   * character-local x=0 plane: left half (x<0) light, right half dark.
+   * Eyes are moved so both sit fully on the left (light) half.
+   */
+  _applySplitSkin(splitColors, splitEyes) {
+    const left  = new THREE.Color(splitColors.left);
+    const right = new THREE.Color(splitColors.right);
+
+    // Paint one mesh; angleY/offset transform geometry coords into
+    // character-local space (arms are rotated groups).
+    const paint = (mesh, angleY, offX, offZ, shade) => {
+      const geo = mesh.geometry;
+      const pos = geo.getAttribute('position');
+      const colors = new Float32Array(pos.count * 3);
+      const cos = Math.cos(angleY), sin = Math.sin(angleY);
+      const cl = left.clone().multiplyScalar(shade);
+      const cr = right.clone().multiplyScalar(shade);
+      for (let i = 0; i < pos.count; i++) {
+        const charX = cos * (pos.getX(i) + offX) + sin * (pos.getZ(i) + offZ);
+        const c = charX < 0 ? cl : cr;
+        colors[i * 3]     = c.r;
+        colors[i * 3 + 1] = c.g;
+        colors[i * 3 + 2] = c.b;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    };
+
+    paint(this.bodyMesh, 0, 0, 0, 1);
+    this.armMeshes.forEach(armGroup => {
+      const angle = armGroup.rotation.y;
+      armGroup.children.forEach(seg => {
+        const shade = seg.material === this.tipMat ? 0.65 : 1;
+        paint(seg, angle, seg.position.x, seg.position.z, shade);
+      });
+    });
+
+    // Materials multiply vertex colors — base color must be white.
+    const emissive = left.clone().lerp(right, 0.5);
+    this._splitEmissive = emissive.getHex();
+    this.bodyMat.vertexColors = true;
+    this.bodyMat.color.setHex(0xffffff);
+    this.bodyMat.emissive.setHex(this._splitEmissive);
+    this.bodyMat.needsUpdate = true;
+    this.tipMat.vertexColors = true;
+    this.tipMat.color.setHex(0xffffff);
+    this.tipMat.emissive.copy(emissive.clone().multiplyScalar(0.65));
+    this.tipMat.needsUpdate = true;
+    this._splitActive = true;
+
+    // Move both eyes fully onto the light LEFT half (x < 0)
+    const offsets = splitEyes?.offsets || [-0.30, -0.12];
+    this._eyeMeshes.forEach((e, i) => {
+      const x = offsets[i] ?? e.baseEyeX;
+      e.eye.position.x   = x;
+      e.pupil.position.x = x + 0.02;
+    });
+  }
+
+  _removeSplitSkin() {
+    if (!this._splitActive) return;
+    this._splitActive = false;
+    this.bodyMat.vertexColors = false;
+    this.bodyMat.needsUpdate  = true;
+    this.tipMat.vertexColors  = false;
+    this.tipMat.needsUpdate   = true;
+    // Restore original eye positions
+    this._eyeMeshes.forEach(e => {
+      e.eye.position.x   = e.baseEyeX;
+      e.pupil.position.x = e.basePupilX;
+    });
   }
 
   _addGlitter() {
@@ -606,7 +696,7 @@ export class Character {
       this.bodyMat.emissive.setHex(0xff6600);
       this.bodyMat.emissiveIntensity = 0.3 + p * 0.8 + pulse * 0.35;
     } else if (this.hitFlashTimer <= 0) {
-      this.bodyMat.emissive.setHex(this.color);
+      this.bodyMat.emissive.setHex(this._splitActive ? this._splitEmissive : this.color);
       this.bodyMat.emissiveIntensity = 0.18;
     }
 
@@ -639,10 +729,17 @@ export class Character {
     // Jump stretch
     if (this.bodyMesh) this.bodyMesh.scale.y = this.isJumping ? 0.6 : 0.38;
 
-    // Hit flash
+    // Hit flash — split skins flash via emissive (their base color must stay
+    // white so the baked vertex colors keep showing)
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer -= dt;
-      this.bodyMat.color.setHex(this.hitFlashTimer > 0 ? 0xffffff : this.color);
+      const flashing = this.hitFlashTimer > 0;
+      if (this._splitActive) {
+        this.bodyMat.emissive.setHex(flashing ? 0xffffff : this._splitEmissive);
+        this.bodyMat.emissiveIntensity = flashing ? 0.9 : 0.18;
+      } else {
+        this.bodyMat.color.setHex(flashing ? 0xffffff : this.color);
+      }
     }
 
     // Hit impulse — brief scale-up on damage

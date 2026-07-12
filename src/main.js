@@ -32,7 +32,12 @@ import { ObstacleSystem }     from './obstacles.js';
 import { LEVELS }             from './level.js';
 import { TouchInput }         from './touch.js';
 import { TrophyManager, SKIN_DEFS, SHOP_SKIN_DEFS, LOOTBOX_SKIN_DEFS } from './trophies.js';
-import { LootboxGenerator, LOOTBOX_PRICE, LOOTBOX_SLOTS } from './lootbox.js';
+import { LootboxGenerator, LOOTBOX_PRICE, LOOTBOX_SLOTS, COIN_REWARD } from './lootbox.js';
+import {
+  WIN_TROPHIES, LOSS_TROPHIES, WIN_CREDITS,
+  NO_GLORY_LABEL, gloryTierForLifetime,
+  OPPONENT_INFO_DURATION_MS, aiOpponentProfile,
+} from './economy.js';
 import { MatchmakingClient, MatchState } from './matchmaking.js';
 import { GameSync } from './gamesync.js';
 
@@ -80,8 +85,9 @@ class Game {
     this.aiList   = []; // all active AIController instances
     this.lastTime = 0;
 
-    this._selectedLevel = 0;
-    this._novaEffects   = [];
+    this._selectedLevel    = 0;
+    this._novaEffects      = [];
+    this._opponentProfile  = null;  // { name, trophies, lifetimeCredits } | null
 
     this._bindMenuButtons();
     this._bindGameButtons();
@@ -300,6 +306,10 @@ class Game {
     this._showScreen('none'); // hide menu
 
     if (this.matchmaking) this.matchmaking.cancel();
+    const ownProfile = {
+      trophies:        this.trophies.trophies,
+      lifetimeCredits: this.trophies.lifetimeCoins,
+    };
     this.matchmaking = new MatchmakingClient(
       (isOnline, matchInfo) => {
         if (overlay) overlay.style.display = 'none';
@@ -324,7 +334,7 @@ class Game {
         statusEl.textContent = labels[matchState] || '';
       }
     );
-    this.matchmaking.search(this.playerName);
+    this.matchmaking.search(this.playerName, ownProfile);
 
     // Cancel button
     const cancelBtn = document.getElementById('btn-mm-cancel');
@@ -348,6 +358,13 @@ class Game {
 
     // Rename the remote player (player2) to the peer's name
     if (this.player2) this.player2.name = matchInfo.peerName;
+
+    // Peer profile (server-sanitized) for the post-match opponent info panel
+    this._opponentProfile = {
+      name:            matchInfo.peerName,
+      trophies:        matchInfo.peerTrophies        || 0,
+      lifetimeCredits: matchInfo.peerLifetimeCredits || 0,
+    };
 
     // Set up game sync
     this.gameSync = new GameSync(
@@ -410,11 +427,12 @@ class Game {
   _onPeerLeft() {
     if (!this.state.isPlaying) return;
     this.hud.setConnectionStatus('offline', '❌ Gegner getrennt');
-    // Show a notice and end the game after a short delay
+    // Show a notice and end the game after a short delay.
+    // Aborted matches (disconnects) never award credits.
     this._showPickupMsg('System', 'Gegner hat das Spiel verlassen!');
     setTimeout(() => {
       if (this.state.isPlaying) {
-        this._endGame(this.player1?.name || 'Spieler 1');
+        this._endGame(this.player1?.name || 'Spieler 1', { aborted: true });
       }
     }, 2000);
   }
@@ -515,10 +533,12 @@ class Game {
     const def = this.trophies.getActiveSkinDef();
     character.applySkinColor(
       def.color,
-      def.glitter    || false,
-      def.rainbow    || false,
-      def.wrackDeco  || false,
+      def.glitter     || false,
+      def.rainbow     || false,
+      def.wrackDeco   || false,
       def.unicornHorn || false,
+      def.splitColors || null,
+      def.splitEyes   || null,
     );
   }
 
@@ -544,6 +564,16 @@ class Game {
     document.getElementById('shop-modal').style.display = 'none';
   }
 
+  /** Short red error toast used for failed purchases. */
+  _showShopError(msg) {
+    const el = document.getElementById('shop-error-toast');
+    if (!el) return;
+    el.textContent   = msg;
+    el.style.display = 'block';
+    clearTimeout(this._shopErrorTimeout);
+    this._shopErrorTimeout = setTimeout(() => { el.style.display = 'none'; }, 3000);
+  }
+
   _renderShopModal() {
     const balEl = document.getElementById('shop-coin-balance');
     if (balEl) balEl.textContent = this.trophies.coins.toLocaleString('de-DE');
@@ -561,8 +591,8 @@ class Game {
         <div class="lb-box-shop-info">
           <div class="lb-box-shop-title">🌟 Seesternbox</div>
           <div class="lb-box-shop-desc">
-            6 Belohnungen · 4 % Chance auf exklusive Box-Skins<br>
-            Enthält: Unterseetaler oder seltene Seestern-Skins
+            ${LOOTBOX_SLOTS} Belohnungen · 4 % Chance auf exklusive Box-Skins<br>
+            Enthält: je ${COIN_REWARD} 🪙 Unterseetaler pro Feld oder seltene Seestern-Skins
           </div>
           <div class="lb-box-shop-price">🪙 ${LOOTBOX_PRICE.toLocaleString('de-DE')} Unterseetaler</div>
         </div>
@@ -575,19 +605,35 @@ class Game {
 
     // ── Regular shop skins ────────────────────────────────────────────────────
     const skinCards = skins.map(skin => {
-      const swatchClass = skin.key === 'rainbow' ? 'swatch-rainbow'
-                        : skin.key === 'unicorn' ? 'swatch-unicorn'
-                        : 'swatch-wrack';
-      const swatchIcon  = skin.key === 'wrack'   ? '🪸'
-                        : skin.key === 'unicorn' ? '🦄'
-                        : '🌈';
-      const priceStr    = `🪙 ${skin.price.toLocaleString('de-DE')} Taler`;
+      // Preview swatch — split skins (Sterni) get a live half/half preview
+      // with both eyes on the light left half; others use themed CSS classes.
+      let swatchHTML;
+      if (skin.splitColors) {
+        const leftHex  = '#' + skin.splitColors.left.toString(16).padStart(6, '0');
+        const rightHex = '#' + skin.splitColors.right.toString(16).padStart(6, '0');
+        swatchHTML = `
+          <div class="shop-swatch swatch-split"
+               style="background:linear-gradient(90deg, ${leftHex} 0 50%, ${rightHex} 50% 100%)">
+            <span class="split-eye" style="left:16%"></span>
+            <span class="split-eye" style="left:33%"></span>
+          </div>`;
+      } else {
+        const swatchClass = skin.key === 'rainbow' ? 'swatch-rainbow'
+                          : skin.key === 'unicorn' ? 'swatch-unicorn'
+                          : 'swatch-wrack';
+        const swatchIcon  = skin.key === 'wrack'   ? '🪸'
+                          : skin.key === 'unicorn' ? '🦄'
+                          : '🌈';
+        swatchHTML = `<div class="shop-swatch ${swatchClass}">${skin.key !== 'rainbow' ? swatchIcon : ''}</div>`;
+      }
+      const priceStr = `🪙 ${skin.price.toLocaleString('de-DE')} Taler`;
 
       let buyBtn = '';
       if (!skin.owned) {
-        const dis   = skin.canAfford ? '' : ' disabled';
+        // Not disabled when unaffordable — clicking shows a clear error toast
+        const cls   = skin.canAfford ? 'shop-buy-btn' : 'shop-buy-btn shop-buy-poor';
         const label = skin.canAfford ? `Kaufen (${priceStr})` : `Zu wenig Taler (${priceStr})`;
-        buyBtn = `<button class="shop-buy-btn" data-key="${skin.key}"${dis}>${label}</button>`;
+        buyBtn = `<button class="${cls}" data-key="${skin.key}">${label}</button>`;
       }
       const equipBtnClass = skin.active ? 'shop-equip-btn shop-active-btn' : 'shop-equip-btn';
       const equipBtn = skin.owned
@@ -602,7 +648,7 @@ class Game {
       return `
         <div class="shop-card${skin.active ? ' shop-active' : ''}${skin.owned ? ' shop-owned' : ''}"
              id="shop-card-${skin.key}">
-          <div class="shop-swatch ${swatchClass}">${skin.key !== 'rainbow' ? swatchIcon : ''}</div>
+          ${swatchHTML}
           <div class="shop-info">
             <div class="shop-name">${skin.name}</div>
             <div class="shop-desc">${skin.description}</div>
@@ -622,8 +668,10 @@ class Game {
       boxBtn.addEventListener('click', () => this._buySeesternbox());
     }
 
-    // Bind shop-skin buy buttons
-    list.querySelectorAll('.shop-buy-btn:not([disabled])').forEach(btn => {
+    // Bind shop-skin buy buttons — purchase is validated by the TrophyManager
+    // (the game's authoritative economy logic): already owned skins are never
+    // charged again, insufficient funds shows a clear error message.
+    list.querySelectorAll('.shop-buy-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const key    = btn.dataset.key;
         const result = this.trophies.buyShopSkin(key);
@@ -634,7 +682,14 @@ class Game {
             setTimeout(() => card.classList.remove('buy-flash'), 700);
           }
           this._showUnlockNotification(key);
+          this._updateMenuStats();
           this._renderShopModal();
+        } else if (result === 'insufficient_funds') {
+          const def     = SHOP_SKIN_DEFS[key];
+          const missing = def ? def.price - this.trophies.coins : 0;
+          this._showShopError(
+            `❌ Zu wenig Unterseetaler! Dir fehlen ${missing.toLocaleString('de-DE')} 🪙`
+          );
         }
       });
     });
@@ -654,7 +709,13 @@ class Game {
   // ── Seesternbox purchase & opening flow ──────────────────────────────────────
 
   _buySeesternbox() {
-    if (!this.trophies.spendCoins(LOOTBOX_PRICE)) return;
+    if (!this.trophies.spendCoins(LOOTBOX_PRICE)) {
+      const missing = LOOTBOX_PRICE - this.trophies.coins;
+      this._showShopError(
+        `❌ Zu wenig Unterseetaler! Dir fehlen ${missing.toLocaleString('de-DE')} 🪙`
+      );
+      return;
+    }
     this._updateMenuStats();
     const rewards = this._lootbox.generateRewards();
     this._closeShopModal();
@@ -860,6 +921,19 @@ class Game {
       aiChars.push(char);
     }
 
+    // ── Opponent profile for the post-match info panel ───────────────────────
+    // AI opponents get a deterministic pseudo-profile; online peers get the
+    // server-sanitized profile (set in _startOnlineGame after this call).
+    // Local 2-player has no stored opponent profile → panel stays hidden.
+    if (isOnline || mode === GameMode.LOCAL_VERSUS) {
+      this._opponentProfile = null;
+    } else if (this.player2) {
+      this._opponentProfile = {
+        name: this.player2.name,
+        ...aiOpponentProfile(this.player2.name, diff),
+      };
+    }
+
     // ── AI controllers ───────────────────────────────────────────────────────
     this.aiList = [];
     // Skip AI for player2 in local/online versus, and skip all AI in online mode
@@ -932,7 +1006,28 @@ class Game {
     const trophyEl = document.getElementById('menu-trophy-count');
     const coinEl   = document.getElementById('menu-coin-count');
     if (trophyEl) trophyEl.textContent = this.trophies.trophies;
-    if (coinEl)   coinEl.textContent   = this.trophies.coins;
+    if (coinEl)   coinEl.textContent   = this.trophies.coins.toLocaleString('de-DE');
+    this._updateGloryDisplay();
+  }
+
+  /** Glory ("Ruhm") tier + progress bar in the menu player profile. */
+  _updateGloryDisplay() {
+    const labelEl = document.getElementById('glory-tier-label');
+    const textEl  = document.getElementById('glory-progress-text');
+    const fillEl  = document.getElementById('glory-bar-fill');
+    if (!labelEl || !textEl || !fillEl) return;
+
+    const { current, next, lifetimeCredits } = this.trophies.getGloryProgress();
+    labelEl.textContent = current ? `${current.icon} ${current.name}` : `🏅 ${NO_GLORY_LABEL}`;
+
+    if (next) {
+      const req = next.requiredLifetimeCredits;
+      textEl.textContent = `${lifetimeCredits.toLocaleString('de-DE')} / ${req.toLocaleString('de-DE')} 🪙`;
+      fillEl.style.width = Math.min(100, (lifetimeCredits / req) * 100) + '%';
+    } else {
+      textEl.textContent = 'Maximaler Ruhm erreicht!';
+      fillEl.style.width = '100%';
+    }
   }
 
   _pause() {
@@ -947,15 +1042,24 @@ class Game {
     this._showScreen('none');
   }
 
-  _endGame(winnerName) {
-    this.state.endGame(winnerName);
+  /**
+   * End the current match and hand out rewards exactly once.
+   * @param {string} winnerName
+   * @param {{aborted?:boolean}} [opts]  aborted matches (disconnects etc.)
+   *                                     never award credits
+   */
+  _endGame(winnerName, { aborted = false } = {}) {
+    // Idempotency guard: duplicate / concurrent match-end events are ignored,
+    // so trophies and credits can never be granted twice for one match.
+    if (!this.state.endGame(winnerName)) return;
     document.getElementById('hud').style.display = 'none';
     this.touch.hide();
 
-    const isWin = winnerName === this.player1?.name;
+    const isWin         = winnerName === this.player1?.name;
+    const awardCredits  = isWin && !aborted;
     if (isWin) {
       this.state.addWin();
-      this.trophies.addWin();
+      this.trophies.addWin(awardCredits);
     } else {
       this.state.addLoss();
       this.trophies.addLoss();
@@ -969,14 +1073,17 @@ class Game {
     document.getElementById('winner-text').style.color = isWin ? '#ffdd00' : '#ff4444';
     const deltaEl = document.getElementById('score-delta');
     if (deltaEl) {
-      deltaEl.textContent = isWin
-        ? '+10 🏆 Trophäen  |  +200 🪙 Unterseetaler'
-        : '−5 🏆 Trophäen';
+      deltaEl.textContent = !isWin
+        ? `−${LOSS_TROPHIES} 🏆 Trophäen`
+        : awardCredits
+          ? `Sieg! +${WIN_TROPHIES} 🏆 Trophäen  |  +${WIN_CREDITS} 🪙 Unterseetaler`
+          : `+${WIN_TROPHIES} 🏆 Trophäen  (Match abgebrochen — keine Unterseetaler)`;
       deltaEl.style.color = isWin ? '#88ff88' : '#ff6666';
     }
     this.hud.updateScore(this.state.score);
     this.hud.updateTrophies(this.trophies.trophies);
     this.hud.updateCoins(this.trophies.coins);
+    this._updateMenuStats();
 
     // Show / update next-level button
     let nextBtn = document.getElementById('btn-next-level');
@@ -994,6 +1101,42 @@ class Game {
     }
 
     this._showScreen('game-over');
+    this._showOpponentInfo();
+  }
+
+  // ── Post-match opponent info panel ───────────────────────────────────────────
+
+  /**
+   * Briefly show the opponent's name, trophies, and glory after a match.
+   * Auto-hides after OPPONENT_INFO_DURATION_MS; never blocks the buttons.
+   */
+  _showOpponentInfo() {
+    const panel = document.getElementById('opponent-info');
+    if (!panel) return;
+    clearTimeout(this._oiTimeout);
+
+    const p = this._opponentProfile;
+    if (!p) { panel.style.display = 'none'; return; }
+
+    const glory = gloryTierForLifetime(p.lifetimeCredits || 0);
+    document.getElementById('oi-name').textContent     = p.name;
+    document.getElementById('oi-trophies').textContent =
+      (p.trophies || 0).toLocaleString('de-DE');
+    document.getElementById('oi-glory').textContent =
+      glory ? `${glory.icon} ${glory.name}` : NO_GLORY_LABEL;
+
+    panel.classList.remove('oi-hide');
+    panel.style.display = 'block';
+    this._oiTimeout = setTimeout(() => {
+      panel.classList.add('oi-hide');           // CSS fade-out
+      setTimeout(() => { panel.style.display = 'none'; }, 450);
+    }, OPPONENT_INFO_DURATION_MS);
+  }
+
+  _hideOpponentInfo() {
+    clearTimeout(this._oiTimeout);
+    const panel = document.getElementById('opponent-info');
+    if (panel) panel.style.display = 'none';
   }
 
   /** Show one overlay; pass 'none' to hide all. */
@@ -1001,6 +1144,7 @@ class Game {
     ['menu', 'game-over', 'pause'].forEach(s => {
       document.getElementById(s).style.display = s === id ? 'flex' : 'none';
     });
+    if (id !== 'game-over') this._hideOpponentInfo();
   }
 
   // ── Weapon firing ───────────────────────────────────────────────────────────
@@ -1515,3 +1659,6 @@ class Game {
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 const game = new Game();
 game.run();
+
+// Debug handle (used by the TAB debug overlay workflow and E2E tests)
+window.seesternGame = game;

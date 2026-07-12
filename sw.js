@@ -4,7 +4,7 @@
  * Strategy: Cache-first with network fallback.
  */
 
-const CACHE_NAME = 'seestern-fighters-v1';
+const CACHE_NAME = 'seestern-fighters-v2';
 
 const STATIC_ASSETS = [
   './',
@@ -20,10 +20,18 @@ const STATIC_ASSETS = [
   './src/hud.js',
   './src/gamestate.js',
   './src/weapons.js',
+  './src/weaponModels.js',
   './src/projectile.js',
   './src/pickup.js',
   './src/obstacles.js',
   './src/level.js',
+  './src/abilities.js',
+  './src/animation.js',
+  './src/trophies.js',
+  './src/lootbox.js',
+  './src/economy.js',
+  './src/matchmaking.js',
+  './src/gamesync.js',
 ];
 
 // Install: cache all static assets

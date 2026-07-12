@@ -380,6 +380,50 @@
       color: #aabb88;
     }
     .menu-stat.gold { color: #ffcc44; }
+
+    /* ── Glory ("Ruhm") profile box ────────────────────────────────────── */
+    .menu-glory-box {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(0,20,60,0.55);
+      border: 1px solid rgba(255,180,80,0.25);
+      border-radius: 14px;
+      padding: 7px 16px;
+      margin-top: 8px;
+      width: 100%;
+      max-width: 340px;
+    }
+    .glory-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .glory-tier {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffbb66;
+    }
+    .glory-progress-text {
+      font-size: 11px;
+      font-weight: 600;
+      color: #99aacc;
+      white-space: nowrap;
+    }
+    .glory-bar-bg {
+      background: rgba(255,255,255,0.10);
+      border-radius: 5px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .glory-bar-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 5px;
+      background: linear-gradient(90deg, #b87333, #ffb066);
+      transition: width 0.3s ease;
+    }
     #btn-change-name-top {
       background: none;
       border: 1px solid rgba(80,160,255,0.35);
@@ -1190,6 +1234,47 @@
       padding: 10px;
       font-size: 15px;
     }
+    /* Sterni split-skin preview: eyes on the light LEFT half */
+    .shop-swatch.swatch-split { position: relative; }
+    .shop-swatch .split-eye {
+      position: absolute;
+      top: 36%;
+      width: 11px; height: 11px;
+      border-radius: 50%;
+      background: #fff;
+    }
+    .shop-swatch .split-eye::after {
+      content: '';
+      position: absolute;
+      left: 3px; top: 3px;
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #0a0a22;
+    }
+    /* Unaffordable buy button — still clickable to show the error message */
+    .shop-buy-btn.shop-buy-poor { opacity: 0.45; }
+
+    /* Shop error toast (insufficient funds etc.) */
+    #shop-error-toast {
+      display: none;
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #660000, #cc2200);
+      border: 2px solid rgba(255,120,80,0.65);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 12px 26px;
+      border-radius: 30px;
+      z-index: 70;
+      box-shadow: 0 0 24px rgba(255,80,40,0.5);
+      text-align: center;
+      pointer-events: none;
+      max-width: 90vw;
+    }
+
     /* buy flash animation */
     @keyframes buy-flash {
       0%   { box-shadow: 0 0 0 rgba(0,255,100,0); }
@@ -1461,6 +1546,35 @@
     }
     #lb-btn-close:hover { transform: scale(1.04); box-shadow: 0 0 26px rgba(0,130,255,0.6); }
 
+    /* ── Post-match opponent info panel ─────────────────────────────────────── */
+    #opponent-info {
+      display: none;
+      background: rgba(0,18,50,0.92);
+      border: 1px solid rgba(80,160,255,0.4);
+      border-radius: 14px;
+      padding: 12px 26px;
+      margin-bottom: 18px;
+      text-align: center;
+      opacity: 1;
+      transition: opacity 0.4s ease;
+      pointer-events: none;   /* never blocks the buttons below */
+    }
+    #opponent-info.oi-hide { opacity: 0; }
+    .oi-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #4477aa;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 6px;
+    }
+    .oi-line {
+      font-size: 15px;
+      font-weight: 700;
+      color: #cce0ff;
+      line-height: 1.6;
+    }
+
     /* ── Unlock toast ────────────────────────────────────────────────────────── */
     #unlock-toast {
       display: none;
@@ -1522,12 +1636,20 @@
     <!-- Header -->
     <div class="menu-header">
       <h1>🌊 Seestern Fighters</h1>
-      <div class="menu-version">v0.14 — Seesternbox &amp; Shop-Update</div>
+      <div class="menu-version">v0.15 — Sterni, Credits &amp; Ruhm-Update</div>
       <div class="menu-player-bar">
         <span class="menu-player-name">👤 <span id="player-name-display">Spieler</span></span>
         <span class="menu-stat">🏆 <span id="menu-trophy-count">0</span></span>
         <span class="menu-stat gold">🪙 <span id="menu-coin-count">0</span></span>
         <button id="btn-change-name" class="btn" style="padding:4px 12px;font-size:12px;border-radius:16px;background:none;border:1px solid rgba(80,160,255,0.35);color:#6699bb;">✏️ Name</button>
+      </div>
+      <!-- Glory ("Ruhm") progress — based on lifetime earned Unterseetaler -->
+      <div class="menu-glory-box">
+        <div class="glory-row">
+          <span id="glory-tier-label" class="glory-tier">🏅 Noch kein Ruhm</span>
+          <span id="glory-progress-text" class="glory-progress-text">0 / 100.000 🪙</span>
+        </div>
+        <div class="glory-bar-bg"><div id="glory-bar-fill" class="glory-bar-fill"></div></div>
       </div>
     </div>
 
@@ -1618,6 +1740,13 @@
   <div id="game-over" class="overlay">
     <h2 id="winner-text">Spieler 1 gewinnt!</h2>
     <div id="score-delta" style="font-size:20px;font-weight:700;margin-bottom:16px;"></div>
+    <!-- Post-match opponent info (auto-hides after a few seconds) -->
+    <div id="opponent-info">
+      <div class="oi-title">Gegner-Info</div>
+      <div class="oi-line">👤 Gegner: <span id="oi-name"></span></div>
+      <div class="oi-line">🏆 Trophäen: <span id="oi-trophies"></span></div>
+      <div class="oi-line">🏅 Ruhm: <span id="oi-glory"></span></div>
+    </div>
     <div class="btn-row">
       <button class="btn" id="btn-restart">🔄 Nochmal</button>
       <button class="btn secondary" id="btn-menu">🏠 Zum Menü</button>
@@ -1695,6 +1824,9 @@
 
   <!-- ── Skin unlock toast ─────────────────────────────────────────────────── -->
   <div id="unlock-toast"></div>
+
+  <!-- ── Shop error toast (insufficient funds etc.) ────────────────────────── -->
+  <div id="shop-error-toast"></div>
 
   <!-- Debug overlay -->
   <div id="debug"></div>

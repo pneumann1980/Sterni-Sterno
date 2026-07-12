@@ -1,6 +1,39 @@
-# 🌊 Seestern Fighters — Prototype v0.1
+# 🌊 Seestern Fighters — Prototype
 
 Ein schnelles Unterwasser-Actionspiel im Browser. Seesterne kämpfen durch Sprungangriffe.
+
+---
+
+## Neu in v0.15 — Sterni, Credits & Ruhm
+
+Alle Balance-Werte liegen zentral in **`src/economy.js`**:
+
+| Wert | Konstante | Standard |
+|------|-----------|----------|
+| Credits (Unterseetaler) pro Sieg | `WIN_CREDITS` | 100 |
+| Seesternbox-Auszahlung pro Feld | `LOOTBOX_COIN_REWARD` | 50 (vorher 1000) |
+| Preis des „Sterni“-Skins | `STERNI_PRICE` | 5000 |
+| Ruhm-Stufen | `GLORY_TIERS` | Kupfer-Ruhm ab 100.000 |
+| Anzeigedauer Gegner-Info | `OPPONENT_INFO_DURATION_MS` | 4000 ms |
+
+- **Credits**: genau einmal pro regulär gewonnenem Match; abgebrochene
+  Matches (z. B. Verbindungsabbruch) vergeben keine Credits. Doppelte
+  Match-End-Events werden über `GameState.endGame()` verworfen.
+- **Ruhm**: basiert auf den **insgesamt verdienten** Credits
+  (`lifetimeCoins`) — Ausgaben im Shop reduzieren erreichten Ruhm nie.
+  Fortschrittsanzeige im Hauptmenü-Profil.
+- **Sterni-Skin**: im Shop kaufbar; Körper vertikal geteilt (links hellblau,
+  rechts dunkelblau), beide Augen auf der hellen linken Hälfte.
+- **Gegner-Info**: nach Match-Ende werden Name, Trophäen und Ruhm des
+  Gegners kurz eingeblendet (online: server-validierte Werte).
+- **Migration**: bestehende Profile erhalten automatisch sichere
+  Standardwerte (`lifetimeCoins` = aktueller Kontostand, keine Ruhm-Stufen).
+
+### Tests
+
+```bash
+npm test   # node --test tests/*.test.js (keine Abhängigkeiten nötig)
+```
 
 ---
 

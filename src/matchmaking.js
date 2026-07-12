@@ -74,8 +74,11 @@ export class MatchmakingClient {
   /**
    * Start searching. Safe to call multiple times; cancels any previous search.
    * @param {string} playerName  Player's display name sent to the server
+   * @param {object} [profile]   Own stats shared with the peer for the
+   *                             post-match info panel:
+   *                             { trophies:number, lifetimeCredits:number }
    */
-  search(playerName = 'Spieler') {
+  search(playerName = 'Spieler', profile = null) {
     this.cancel();
     this._setState(MatchState.SEARCHING);
     console.log(`[MM] search() playerName="${playerName}" url="${WS_URL}"`);
@@ -85,7 +88,7 @@ export class MatchmakingClient {
       this._triggerFallback();
     }, SEARCH_TIMEOUT);
 
-    this._connectWebSocket(playerName);
+    this._connectWebSocket(playerName, profile);
   }
 
   /** Abort without triggering any callbacks. */
@@ -105,7 +108,7 @@ export class MatchmakingClient {
 
   // ── Internal ─────────────────────────────────────────────────────────────────
 
-  _connectWebSocket(playerName) {
+  _connectWebSocket(playerName, profile = null) {
     let ws;
     try {
       ws = new WebSocket(WS_URL);
@@ -118,7 +121,12 @@ export class MatchmakingClient {
     ws.addEventListener('open', () => {
       if (this._state !== MatchState.SEARCHING) return;
       console.log('[MM] WS open — sending hello');
-      ws.send(JSON.stringify({ type: 'hello', playerName }));
+      ws.send(JSON.stringify({
+        type:            'hello',
+        playerName,
+        trophies:        profile?.trophies        ?? 0,
+        lifetimeCredits: profile?.lifetimeCredits ?? 0,
+      }));
     });
 
     ws.addEventListener('message', (evt) => {
@@ -138,9 +146,12 @@ export class MatchmakingClient {
           // Real player found — keep WS open for game sync
           this._triggerMatch(true, {
             ws,
-            isHost:   msg.isHost,
-            peerName: msg.peerName || 'Gegner',
-            roomId:   msg.roomId,
+            isHost:              msg.isHost,
+            peerName:            msg.peerName || 'Gegner',
+            roomId:              msg.roomId,
+            // Server-sanitized peer stats for the post-match info panel
+            peerTrophies:        Number(msg.peerTrophies)        || 0,
+            peerLifetimeCredits: Number(msg.peerLifetimeCredits) || 0,
           });
           this._ws = null; // ownership transferred to caller
           break;

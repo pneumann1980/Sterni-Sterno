@@ -3,12 +3,18 @@
  * Seesternbox — reward generation logic, configurable drop rates.
  *
  * Each box contains LOOTBOX_SLOTS slots.
- * Per slot: ~4 % chance for a new skin, ~96 % for Unterseetaler.
+ * Per slot: ~4 % chance for a new skin, ~96 % for Unterseetaler (50 each,
+ * see LOOTBOX_COIN_REWARD in economy.js).
  * No duplicate skin drops within a single box.
  * Falls back to bonus coins when the player already owns all skins.
  */
 
 import { LOOTBOX_SKIN_DEFS } from './trophies.js';
+import {
+  LOOTBOX_COIN_REWARD,
+  LOOTBOX_COIN_FALLBACK_MIN,
+  LOOTBOX_COIN_FALLBACK_MAX,
+} from './economy.js';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -21,9 +27,11 @@ export const DROP_RATES = {
   coins: 0.96,   // 96 % → Unterseetaler
 };
 
-export const COIN_REWARD         = 1000;   // standard payout per coin slot
-export const COIN_FALLBACK_MIN   = 1500;   // bonus payout when all skins are owned
-export const COIN_FALLBACK_MAX   = 2000;
+// Payout amounts are defined centrally in economy.js; re-exported here so
+// existing imports keep working.
+export const COIN_REWARD       = LOOTBOX_COIN_REWARD;       // per coin slot
+export const COIN_FALLBACK_MIN = LOOTBOX_COIN_FALLBACK_MIN; // all skins owned
+export const COIN_FALLBACK_MAX = LOOTBOX_COIN_FALLBACK_MAX;
 
 // ── LootboxGenerator ──────────────────────────────────────────────────────────
 
